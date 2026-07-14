@@ -1,0 +1,96 @@
+// ============================================================================
+// Reglas de seguridad de Firestore para el Sistema de Gestión de Aceitera.
+// Cópialas TAL CUAL en: Firebase Console → Firestore Database → Reglas → Publicar.
+// ============================================================================
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ---- Perfiles de usuario ----
+    // Cualquiera puede leer (para saber nombres de usuarios en formularios).
+    // Un usuario puede crear SU PROPIO perfil solo como "empleado" (nunca admin).
+    // Solo un admin puede crear perfiles de otros usuarios o cambiar rol/estado.
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if (request.auth.uid == userId
+                          && request.resource.data.role == 'empleado'
+                          && request.resource.data.activo == true)
+                        || isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---- Solo administrador (proveedores, compras, gastos) ----
+    match /suppliers/{id} {
+      allow read, write: if isAdmin();
+    }
+    match /purchases/{id} {
+      allow read, write: if isAdmin();
+    }
+    match /expenses/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // ---- Catálogos: cualquiera autenticado lee, solo admin escribe ----
+    match /categories/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /brands/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /services/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---- Productos: admin gestiona el catálogo; empleado puede actualizar
+    //      el stock como parte de una venta/servicio, pero no crear/eliminar ----
+    match /products/{id} {
+      allow read: if signedIn();
+      allow update: if signedIn();
+      allow create, delete: if isAdmin();
+    }
+
+    // ---- Operación diaria: ambos roles leen y escriben ----
+    match /customers/{id} {
+      allow read, write: if signedIn();
+    }
+    match /sales/{id} {
+      allow read, write: if signedIn();
+    }
+    match /serviceOrders/{id} {
+      allow read, write: if signedIn();
+    }
+    match /inventoryMovements/{id} {
+      allow read, write: if signedIn();
+    }
+    match /cashMovements/{id} {
+      allow read, write: if signedIn();
+    }
+    match /cashClosings/{id} {
+      allow read, write: if signedIn();
+    }
+    match /cashReturns/{id} {
+      allow read, write: if signedIn();
+    }
+    match /deposits/{id} {
+      allow read, write: if signedIn();
+    }
+    match /counters/{id} {
+      allow read, write: if signedIn();
+    }
+  }
+}
