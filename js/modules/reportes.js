@@ -1,6 +1,6 @@
 import { getAll } from '../data.js';
-import { renderTable } from '../ui.js';
-import { formatQ, todayISO, round2 } from '../utils.js';
+import { renderTable, openModal } from '../ui.js';
+import { formatQ, todayISO, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 
 function dateRangePresetButtons() {
@@ -36,12 +36,13 @@ async function render(container) {
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="compras">Compras</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="clientes">Clientes</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="caja">Caja</button>
+      <button class="btn btn-secondary btn-sm tab-btn" data-tab="comisiones">Comisiones</button>
     </div>
     <div id="rep-content" class="mt-16"></div>
   `;
   const tabButtons = container.querySelectorAll('.tab-btn');
   const content = container.querySelector('#rep-content');
-  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja };
+  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones };
 
   function setActiveTab(tab) {
     tabButtons.forEach((b) => {
@@ -216,6 +217,91 @@ async function render(container) {
     depositsContainer.innerHTML = t2.html;
     t2.mount(depositsContainer);
     bindExportButtons(depositsContainer.closest('.card'), { title: 'Depósitos bancarios', columns: depositCols, getRows: () => depositRows, filename: 'depositos_bancarios' });
+  }
+
+  // ---------------- Comisiones (solo administrador) ----------------
+  // La comisión de cada empleado en una venta/servicio es: (su % propio × total) ÷ cantidad
+  // de empleados asignados a esa misma venta/servicio (si trabajan varios en lo mismo, se
+  // reparte entre ellos en vez de que cada uno cobre el 100% de su porcentaje por separado).
+  async function renderComisiones(el) {
+    el.innerHTML = '<div class="empty-state">Cargando…</div>';
+    const [sales, orders] = await Promise.all([getAll('sales'), getAll('serviceOrders')]);
+    let range = applyRangePreset('mes');
+
+    function draw() {
+      const agg = {}; // nombre -> { nombre, ventas: [...], servicios: [...], comision }
+      function addTo(nombre, tipo, detalle) {
+        agg[nombre] = agg[nombre] || { nombre, ventas: [], servicios: [], comision: 0 };
+        agg[nombre][tipo].push(detalle);
+        agg[nombre].comision = round2(agg[nombre].comision + detalle.comision);
+      }
+      sales.filter((s) => s.fecha >= range.from && s.fecha <= range.to).forEach((s) => {
+        const emps = s.empleadosComision || [];
+        emps.forEach((e) => {
+          const comision = round2((s.total * (e.comisionPct || 0) / 100) / emps.length);
+          addTo(e.empleadoNombre, 'ventas', { numero: s.numero, fecha: s.fecha, total: s.total, comision });
+        });
+      });
+      orders.filter((o) => o.fecha >= range.from && o.fecha <= range.to).forEach((o) => {
+        const emps = o.empleados || [];
+        emps.forEach((e) => {
+          const comision = round2((o.total * (e.comisionPct || 0) / 100) / emps.length);
+          addTo(e.empleadoNombre, 'servicios', { numero: o.numero, fecha: o.fecha, total: o.total, comision });
+        });
+      });
+      const sorted = Object.values(agg).sort((a, b) => b.comision - a.comision);
+      const totalComisiones = round2(sorted.reduce((s, r) => s + r.comision, 0));
+      const rows = sorted.map((r) => ({ nombre: r.nombre, ventas: r.ventas.length, servicios: r.servicios.length, comision: formatQ(r.comision) }));
+      const cols = [
+        { key: 'nombre', label: 'Empleado' },
+        { key: 'ventas', label: 'Ventas asignadas' },
+        { key: 'servicios', label: 'Servicios asignados' },
+        { key: 'comision', label: 'Comisión ganada' },
+        { key: 'detalle', label: '', format: (r) => `<button class="btn btn-secondary btn-sm" data-emp="${escapeHtml(r.nombre)}">Ver detalle</button>` },
+      ];
+
+      el.innerHTML = `
+        <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
+        <div class="stat-card mt-16" style="max-width:260px"><div class="label">Total comisiones del período</div><div class="value">${formatQ(totalComisiones)}</div></div>
+        <div class="card mt-16"><div id="rep-comisiones-table"></div></div>
+      `;
+      const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Sin comisiones en el período.' });
+      const tableContainer = document.getElementById('rep-comisiones-table');
+      tableContainer.innerHTML = t.html;
+      t.mount(tableContainer);
+      bindExportButtons(el, {
+        title: 'Comisiones por empleado',
+        columns: cols.filter((c) => c.key !== 'detalle'),
+        getRows: () => rows,
+        filename: 'comisiones',
+      });
+      tableContainer.addEventListener('click', (e) => {
+        const nombre = e.target.dataset.emp;
+        if (nombre) showEmployeeDetail(agg[nombre]);
+      });
+      el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => { range = applyRangePreset(b.dataset.range); draw(); }));
+    }
+
+    function showEmployeeDetail(r) {
+      const rowsHtml = (tipo, list) => list.length
+        ? list.map((it) => `<tr><td>${escapeHtml(it.numero)}</td><td>${escapeHtml(it.fecha)}</td><td>${formatQ(it.total)}</td><td>${formatQ(it.comision)}</td></tr>`).join('')
+        : `<tr><td colspan="4" class="table-empty">Sin ${tipo} en el período.</td></tr>`;
+      openModal(`Comisiones — ${r.nombre}`, `
+        <div class="section-title" style="margin-top:0">Ventas</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>No.</th><th>Fecha</th><th>Total venta</th><th>Comisión</th></tr></thead>
+          <tbody>${rowsHtml('ventas', r.ventas)}</tbody>
+        </table></div>
+        <div class="section-title">Servicios</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>No.</th><th>Fecha</th><th>Total orden</th><th>Comisión</th></tr></thead>
+          <tbody>${rowsHtml('servicios', r.servicios)}</tbody>
+        </table></div>
+        <p class="text-right mt-16"><b>Total comisión: ${formatQ(r.comision)}</b></p>
+      `);
+    }
+
+    draw();
   }
 }
 

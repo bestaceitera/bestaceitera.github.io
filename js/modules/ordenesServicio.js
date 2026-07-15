@@ -15,12 +15,12 @@ async function render(container) {
       { key: 'fecha', label: 'Fecha' },
       { key: 'clienteNombre', label: 'Cliente' },
       { key: 'placa', label: 'Placa', format: (r) => r.vehiculo?.placa || '' },
-      { key: 'empleadoNombre', label: 'Empleado' },
+      { key: 'empleados', label: 'Empleados', format: (r) => (r.empleados || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') },
       { key: 'total', label: 'Total', format: (r) => formatQ(r.total) },
       { key: 'acciones', label: '', format: (r) => `<button class="btn btn-secondary btn-sm" data-view="${r.id}">Ver detalle</button>` },
     ],
     rows: orders,
-    searchKeys: ['numero', 'clienteNombre', 'empleadoNombre'],
+    searchKeys: ['numero', 'clienteNombre'],
     emptyMessage: 'Aún no hay órdenes de servicio.',
     extraToolbar: `<button class="btn btn-primary btn-sm" id="btn-new">+ Nueva orden de servicio</button>`,
   });
@@ -39,7 +39,7 @@ async function render(container) {
     openModal(`Orden ${o.numero}`, `
       <p><b>Cliente:</b> ${escapeHtml(o.clienteNombre)} &nbsp; <b>Fecha:</b> ${escapeHtml(o.fecha)}</p>
       <p><b>Vehículo:</b> ${escapeHtml(o.vehiculo?.marca)} ${escapeHtml(o.vehiculo?.modelo)} ${escapeHtml(o.vehiculo?.anio || '')} — Placa ${escapeHtml(o.vehiculo?.placa)}</p>
-      <p><b>Empleado:</b> ${escapeHtml(o.empleadoNombre)}</p>
+      <p><b>Empleados:</b> ${(o.empleados || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
       <div class="section-title">Servicios realizados</div>
       <ul>${(o.servicios || []).map((s) => `<li>${escapeHtml(s.nombre)} — ${formatQ(s.precio)}</li>`).join('') || '<li class="text-muted">Ninguno</li>'}</ul>
       <div class="section-title">Productos utilizados</div>
@@ -59,23 +59,27 @@ async function render(container) {
       getAll('users', { order: 'nombre' }),
     ]);
     const activeUsers = users.filter((u) => u.activo !== false);
+    if (!activeUsers.length) { toast('No hay usuarios activos para asignar la orden.', 'danger'); return; }
     const customers = await getAll('customers', { order: 'nombre' });
     const currentUser = getCurrentUser();
 
     const productCart = [];
 
     openModal('Nueva orden de servicio', `
-      <div class="form-row">
-        <label>Cliente
-          <select id="os-cliente">
-            <option value="CF">Consumidor Final</option>
-            ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`).join('')}
-          </select>
-        </label>
-        <label>Empleado que atiende
-          <select id="os-empleado">${activeUsers.map((u) => `<option value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" ${u.id === currentUser.uid ? 'selected' : ''}>${escapeHtml(u.nombre)}</option>`).join('')}</select>
-        </label>
+      <label>Cliente
+        <select id="os-cliente">
+          <option value="CF">Consumidor Final</option>
+          ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`).join('')}
+        </select>
+      </label>
+
+      <div class="section-title">Empleados que realizaron el servicio</div>
+      <div class="tag-list" id="os-empleados">
+        ${activeUsers.map((u) => `<label class="chip" style="cursor:pointer">
+            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto" ${u.id === currentUser.uid ? 'checked' : ''}> ${escapeHtml(u.nombre)}
+          </label>`).join('')}
       </div>
+
       <div class="section-title">Vehículo</div>
       <div class="form-row">
         <label>Marca <input id="os-v-marca"></label>
@@ -148,6 +152,12 @@ async function render(container) {
       }));
     }
 
+    function selectedEmpleados() {
+      return [...document.querySelectorAll('#os-empleados input:checked')].map((el) => ({
+        empleadoId: el.value, empleadoNombre: el.dataset.nombre, comisionPct: Number(el.dataset.comision) || 0,
+      }));
+    }
+
     function renderCart() {
       const list = $('os-cart-list');
       list.innerHTML = productCart.length ? productCart.map((i, idx) => `
@@ -176,6 +186,7 @@ async function render(container) {
     }
 
     $('os-add-prod').addEventListener('click', () => {
+      if (!products.length) { toast('No hay productos en el catálogo para agregar.', 'danger'); return; }
       const opt = $('os-producto').selectedOptions[0];
       const cantidad = Number($('os-cantidad').value);
       const stock = Number(opt.dataset.stock);
@@ -200,6 +211,8 @@ async function render(container) {
     });
 
     $('os-save').addEventListener('click', async () => {
+      const empleadosOrden = selectedEmpleados();
+      if (!empleadosOrden.length) { toast('Selecciona al menos un empleado que realizó el servicio.', 'danger'); return; }
       const { costoProductos, manoObra, total } = updateTotal();
       const formaPago = $('os-pago').value;
       let recibido = Number($('os-recibido').value) || 0;
@@ -215,7 +228,6 @@ async function render(container) {
       saveBtn.disabled = true;
       try {
         const clienteOpt = $('os-cliente').selectedOptions[0];
-        const empleadoOpt = $('os-empleado').selectedOptions[0];
         const clienteId = clienteOpt.value;
         const clienteNombre = clienteId === 'CF' ? CONSUMIDOR_FINAL.nombre : clienteOpt.dataset.nombre;
         const numero = await nextFolio('serviceOrders', { prefix: 'OS-', pad: 5 });
@@ -227,8 +239,7 @@ async function render(container) {
           vehiculo: { marca: $('os-v-marca').value.trim(), modelo: $('os-v-modelo').value.trim(), anio: $('os-v-anio').value, placa: $('os-v-placa').value.trim().toUpperCase() },
           servicios: selectedServicios(),
           productos: productCart,
-          empleadoId: empleadoOpt.value,
-          empleadoNombre: empleadoOpt.dataset.nombre,
+          empleados: empleadosOrden,
           observaciones: $('os-obs').value.trim(),
           costoManoObra: manoObra,
           costoProductos,

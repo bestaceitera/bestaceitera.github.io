@@ -29,6 +29,7 @@ async function render(container) {
       { key: 'username', label: 'Usuario' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'role', label: 'Rol', format: (r) => `<span class="badge badge-info">${escapeHtml(ROLE_LABEL[r.role] || r.role)}</span>` },
+      { key: 'comision', label: 'Comisión', format: (r) => `${Number(r.comision || 0)}%` },
       { key: 'estado', label: 'Estado', format: (r) => r.activo === false
           ? `<span class="badge badge-muted">Inactivo</span>` : `<span class="badge badge-success">Activo</span>` },
       { key: 'acciones', label: '', format: (r) => `<button class="btn btn-secondary btn-sm" data-edit="${r.id}">Editar</button>` },
@@ -73,6 +74,9 @@ async function render(container) {
             <option value="admin">Administrador</option>
           </select>
         </label>
+        <label>Comisión por venta/servicio (%)
+          <input name="comision" type="number" min="0" max="100" step="0.1" value="0">
+        </label>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" id="cancel-form">Cancelar</button>
           <button type="submit" class="btn btn-primary">Crear usuario</button>
@@ -88,7 +92,7 @@ async function render(container) {
       try {
         const email = usernameToEmail(v.username);
         const uid = await createAuthUser(email, v.password);
-        await setRecord('users', uid, { username: v.username.trim().toLowerCase(), nombre: v.nombre.trim(), role: v.role, activo: true });
+        await setRecord('users', uid, { username: v.username.trim().toLowerCase(), nombre: v.nombre.trim(), role: v.role, comision: Number(v.comision) || 0, activo: true });
         toast('Usuario creado correctamente.', 'success');
         closeModal();
         render(container);
@@ -114,6 +118,9 @@ async function render(container) {
             <option value="admin" ${item.role === 'admin' ? 'selected' : ''}>Administrador</option>
           </select>
         </label>
+        <label>Comisión por venta/servicio (%)
+          <input name="comision" type="number" min="0" max="100" step="0.1" value="${Number(item.comision || 0)}">
+        </label>
         <label style="display:flex;align-items:center;gap:8px">
           <input type="checkbox" name="activo" style="width:auto" ${item.activo === false ? '' : 'checked'}> Usuario activo
         </label>
@@ -129,7 +136,7 @@ async function render(container) {
       e.preventDefault();
       const v = formValues(e.target);
       try {
-        await updateRecord('users', item.id, { nombre: v.nombre.trim(), role: v.role, activo: !!v.activo });
+        await updateRecord('users', item.id, { nombre: v.nombre.trim(), role: v.role, comision: Number(v.comision) || 0, activo: !!v.activo });
         toast('Usuario actualizado.', 'success');
         closeModal();
         render(container);

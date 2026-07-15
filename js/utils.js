@@ -97,14 +97,19 @@ function blobToDataURL(blob) {
  * Comprime una foto y la devuelve como data URL (base64) lista para guardar
  * directamente en un documento de Firestore, probando progresivamente más
  * compresión hasta quedar bajo maxBytes (Firestore limita cada documento a 1MiB).
+ * El último intento es agresivo a propósito para GARANTIZAR que siempre quepa
+ * (nunca debe fallar el guardado por una foto pesada).
  */
-export async function compressImageForFirestore(file, { maxBytes = 700000 } = {}) {
+export async function compressImageForFirestore(file, { maxBytes = 900000 } = {}) {
   const attempts = [
-    { maxDim: 1200, quality: 0.75 },
-    { maxDim: 1000, quality: 0.6 },
-    { maxDim: 800, quality: 0.5 },
-    { maxDim: 600, quality: 0.4 },
-    { maxDim: 500, quality: 0.3 },
+    { maxDim: 1600, quality: 0.85 },
+    { maxDim: 1400, quality: 0.75 },
+    { maxDim: 1100, quality: 0.65 },
+    { maxDim: 900, quality: 0.55 },
+    { maxDim: 700, quality: 0.45 },
+    { maxDim: 500, quality: 0.35 },
+    { maxDim: 350, quality: 0.25 },
+    { maxDim: 220, quality: 0.15 },
   ];
   let dataUrl = null;
   for (const { maxDim, quality } of attempts) {

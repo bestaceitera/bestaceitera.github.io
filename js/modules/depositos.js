@@ -83,13 +83,12 @@ async function render(container) {
       try {
         let fotoBase64 = null;
         if (selectedFile) {
-          saveBtn.textContent = 'Comprimiendo foto…';
-          fotoBase64 = await compressImageForFirestore(selectedFile);
-          if (fotoBase64.length > 950000) {
-            toast('La foto sigue pesando demasiado incluso comprimida. Intenta con otra foto más simple.', 'danger');
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Guardar depósito';
-            return;
+          saveBtn.textContent = 'Procesando foto…';
+          try {
+            fotoBase64 = await compressImageForFirestore(selectedFile);
+          } catch {
+            fotoBase64 = null; // si algo sale mal con la imagen, el depósito se guarda igual, sin foto
+            toast('No se pudo procesar la foto; el depósito se guardará sin comprobante.', 'info');
           }
         }
         saveBtn.textContent = 'Guardando…';

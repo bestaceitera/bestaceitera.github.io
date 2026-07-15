@@ -44,16 +44,19 @@ async function render(container) {
       </table></div>
       <p class="mt-16 text-right">Subtotal: ${formatQ(s.subtotal)}<br>IVA (12%): ${formatQ(s.iva)}<br><b>Total: ${formatQ(s.total)}</b></p>
       <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
+      <p><b>Empleados:</b> ${(s.empleadosComision || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
     `);
   }
 
   async function openSaleForm() {
-    const [products, customers] = await Promise.all([
+    const [products, customers, users] = await Promise.all([
       getAll('products', { order: 'nombre' }),
       getAll('customers', { order: 'nombre' }),
+      getAll('users', { order: 'nombre' }),
     ]);
     const activeProducts = products.filter((p) => p.estado !== 'inactivo');
     if (!activeProducts.length) { toast('No hay productos activos para vender.', 'danger'); return; }
+    const activeUsers = users.filter((u) => u.activo !== false);
     const user = getCurrentUser();
     const cart = [];
 
@@ -64,6 +67,14 @@ async function render(container) {
           ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`).join('')}
         </select>
       </label>
+
+      <div class="section-title">Empleados que realizaron esta venta</div>
+      <div class="tag-list" id="v-empleados">
+        ${activeUsers.map((u) => `<label class="chip" style="cursor:pointer">
+            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto" ${u.id === user.uid ? 'checked' : ''}> ${escapeHtml(u.nombre)}
+          </label>`).join('') || '<span class="text-muted">No hay usuarios activos.</span>'}
+      </div>
+
       <div class="section-title">Agregar producto</div>
       <div class="form-row">
         <label>Producto
@@ -107,6 +118,12 @@ async function render(container) {
 
     const $ = (id) => document.getElementById(id);
     document.getElementById('cancel-form').addEventListener('click', closeModal);
+
+    function selectedEmpleados() {
+      return [...document.querySelectorAll('#v-empleados input:checked')].map((el) => ({
+        empleadoId: el.value, empleadoNombre: el.dataset.nombre, comisionPct: Number(el.dataset.comision) || 0,
+      }));
+    }
 
     $('v-producto').addEventListener('change', (e) => { $('v-precio').value = e.target.selectedOptions[0].dataset.precio; });
 
@@ -164,6 +181,8 @@ async function render(container) {
 
     $('v-save').addEventListener('click', async () => {
       if (!cart.length) { toast('Agrega al menos un producto.', 'danger'); return; }
+      const empleadosComision = selectedEmpleados();
+      if (!empleadosComision.length) { toast('Selecciona al menos un empleado que realizó la venta.', 'danger'); return; }
       const { subtotal, iva, total } = computeTotals();
       const formaPago = $('v-pago').value;
       let montoRecibido = total, vuelto = 0;
@@ -192,7 +211,7 @@ async function render(container) {
           numero, fecha: todayISO(), usuarioId: user.uid, usuarioNombre: user.nombre,
           clienteId, clienteNombre, clienteTipo: clienteId === 'CF' ? 'CF' : 'registrado',
           items: cart, subtotal, descuentoTotal: round2(cart.reduce((s, i) => s + i.descuento, 0)),
-          iva, total, formaPago, montoRecibido, vuelto,
+          iva, total, formaPago, montoRecibido, vuelto, empleadosComision,
         });
 
         for (const item of cart) {
