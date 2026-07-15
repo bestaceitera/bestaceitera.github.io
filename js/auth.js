@@ -30,13 +30,13 @@ export function getCurrentUser() {
 async function ensureProfile(fbUser) {
   const existing = await getById('users', fbUser.uid);
   if (existing) {
-    currentProfile = existing;
-    return existing;
+    currentProfile = { ...existing, uid: fbUser.uid };
+    return currentProfile;
   }
   const username = emailToUsername(fbUser.email || '');
   const profile = { username, nombre: username, role: 'empleado', activo: true };
   await setRecord('users', fbUser.uid, profile);
-  currentProfile = { id: fbUser.uid, ...profile };
+  currentProfile = { uid: fbUser.uid, ...profile };
   return currentProfile;
 }
 
