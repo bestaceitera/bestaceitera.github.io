@@ -1,7 +1,7 @@
 import { getAll, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
-import { renderTable, openModal, closeModal, toast } from '../ui.js';
+import { renderTable, openModal, closeModal, toast, productSearch } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
@@ -64,6 +64,8 @@ async function render(container) {
     const currentUser = getCurrentUser();
 
     const productCart = [];
+    const activeProducts = products.filter((p) => p.estado !== 'inactivo');
+    const prodSearch = productSearch(activeProducts, { id: 'os-producto' });
 
     openModal('Nueva orden de servicio', `
       <label>Cliente
@@ -99,9 +101,7 @@ async function render(container) {
 
       <div class="section-title">Productos utilizados</div>
       <div class="form-row">
-        <label>Producto
-          <select id="os-producto">${products.map((p) => `<option value="${p.id}" data-precio="${p.precioVenta}" data-nombre="${escapeHtml(p.nombre)}" data-stock="${p.stock}">${escapeHtml(p.nombre)} (stock: ${p.stock})</option>`).join('')}</select>
-        </label>
+        ${prodSearch.html}
         <label>Cantidad <input type="number" id="os-cantidad" min="1" step="1" value="1"></label>
       </div>
       <button type="button" class="btn btn-secondary" id="os-add-prod">+ Agregar producto</button>
@@ -185,15 +185,21 @@ async function render(container) {
       return { costoProductos, manoObra, total };
     }
 
+    const buscador = prodSearch.mount();
+
     $('os-add-prod').addEventListener('click', () => {
-      if (!products.length) { toast('No hay productos en el catálogo para agregar.', 'danger'); return; }
-      const opt = $('os-producto').selectedOptions[0];
+      if (!activeProducts.length) { toast('No hay productos en el catálogo para agregar.', 'danger'); return; }
+      const prod = buscador.getSelected();
+      if (!prod) { toast('Escribe el nombre del producto y elígelo de la lista.', 'danger'); return; }
       const cantidad = Number($('os-cantidad').value);
-      const stock = Number(opt.dataset.stock);
+      const stock = Number(prod.stock);
       if (!cantidad || cantidad <= 0) { toast('Cantidad inválida.', 'danger'); return; }
-      if (cantidad > stock) { toast(`Solo hay ${stock} en stock.`, 'danger'); return; }
-      const precio = Number(opt.dataset.precio);
-      productCart.push({ productoId: opt.value, nombre: opt.dataset.nombre, cantidad, precio, subtotal: round2(cantidad * precio) });
+      const yaEnCarrito = productCart.filter((i) => i.productoId === prod.id).reduce((s, i) => s + i.cantidad, 0);
+      if (cantidad + yaEnCarrito > stock) { toast(`Solo hay ${stock} en stock.`, 'danger'); return; }
+      const precio = Number(prod.precioVenta);
+      productCart.push({ productoId: prod.id, nombre: prod.nombre, cantidad, precio, subtotal: round2(cantidad * precio) });
+      buscador.clear();
+      $('os-cantidad').value = 1;
       renderCart();
     });
 

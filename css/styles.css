@@ -129,3 +129,12 @@ tbody tr:hover{background:var(--bg)}
 .chip button{background:none;border:none;color:inherit;font-weight:700}
 .photo-preview{max-width:220px;border-radius:8px;border:1px solid var(--border);margin-top:8px}
 .empty-state{text-align:center;padding:50px 20px;color:var(--text-muted)}
+
+/* Buscador de productos (combobox) */
+.prod-search{position:relative;display:block}
+.prod-search-results{position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.15);max-height:240px;overflow-y:auto;margin-top:4px}
+.prod-search-item{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;cursor:pointer;font-size:13.5px;border-bottom:1px solid var(--border)}
+.prod-search-item:last-child{border-bottom:none}
+.prod-search-item:hover{background:var(--bg)}
+.prod-search-item.is-empty{cursor:default}
+.prod-search-item.is-empty:hover{background:none}

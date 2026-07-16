@@ -1,4 +1,4 @@
-import { escapeHtml } from './utils.js';
+import { escapeHtml, formatQ } from './utils.js';
 
 /* ---------------- Toast ---------------- */
 export function toast(message, type = 'info', ms = 3500) {
@@ -109,6 +109,64 @@ export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emp
     search?.addEventListener('input', (e) => { state.query = e.target.value; state.page = 1; renderBody(container); });
     renderBody(container);
     return { refresh: (newRows) => { rows = newRows; renderBody(container); } };
+  }
+
+  return { html, mount };
+}
+
+/* ---------------- Buscador de productos (combobox) ---------------- */
+/**
+ * productSearch(products, { id, label }) — campo de texto con lista de
+ * coincidencias para elegir un producto escribiendo su nombre.
+ * Devuelve { html, mount }. mount({ onSelect }) engancha los eventos y
+ * devuelve { getSelected, clear }.
+ */
+export function productSearch(products, { id = 'prod-search', label = 'Producto (escribe para buscar)' } = {}) {
+  const html = `
+    <label class="prod-search">${escapeHtml(label)}
+      <input type="text" id="${id}" placeholder="Escribe el nombre del producto…" autocomplete="off">
+      <div class="prod-search-results" id="${id}-results" hidden></div>
+    </label>`;
+
+  function mount({ onSelect } = {}) {
+    const input = document.getElementById(id);
+    const results = document.getElementById(`${id}-results`);
+    let selected = null;
+
+    function show() {
+      const t = input.value.trim().toLowerCase();
+      const matches = (t
+        ? products.filter((p) => `${p.nombre} ${p.viscosidad || ''} ${p.presentacion || ''} ${p.marca || ''}`.toLowerCase().includes(t))
+        : products
+      ).slice(0, 25);
+      results.innerHTML = matches.length
+        ? matches.map((p) => `
+            <div class="prod-search-item" data-id="${p.id}">
+              <span>${escapeHtml(p.nombre)}</span>
+              <span class="text-muted">stock: ${p.stock} · ${formatQ(p.precioVenta)}</span>
+            </div>`).join('')
+        : `<div class="prod-search-item is-empty text-muted">No se encontró ningún producto con ese nombre.</div>`;
+      results.hidden = false;
+    }
+
+    input.addEventListener('input', () => { selected = null; show(); });
+    input.addEventListener('focus', show);
+    // mousedown (no click) para que se dispare antes del blur del input
+    results.addEventListener('mousedown', (e) => {
+      const item = e.target.closest('[data-id]');
+      if (!item) return;
+      e.preventDefault();
+      selected = products.find((p) => p.id === item.dataset.id) || null;
+      input.value = selected ? selected.nombre : '';
+      results.hidden = true;
+      if (selected && onSelect) onSelect(selected);
+    });
+    input.addEventListener('blur', () => { setTimeout(() => { results.hidden = true; }, 150); });
+
+    return {
+      getSelected: () => selected,
+      clear: () => { selected = null; input.value = ''; results.hidden = true; },
+    };
   }
 
   return { html, mount };

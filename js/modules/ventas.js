@@ -1,8 +1,8 @@
 import { getAll, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
-import { renderTable, openModal, closeModal, toast } from '../ui.js';
-import { escapeHtml, formatQ, round2, calcIVA, todayISO } from '../utils.js';
+import { renderTable, openModal, closeModal, toast, productSearch } from '../ui.js';
+import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
 
@@ -42,7 +42,7 @@ async function render(container) {
         <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Desc.</th><th>Subtotal</th></tr></thead>
         <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.descuento)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
       </table></div>
-      <p class="mt-16 text-right">Subtotal: ${formatQ(s.subtotal)}<br>IVA (12%): ${formatQ(s.iva)}<br><b>Total: ${formatQ(s.total)}</b></p>
+      <p class="mt-16 text-right">${s.iva > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>IVA (12%): ${formatQ(s.iva)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
       <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
       <p><b>Empleados:</b> ${(s.empleadosComision || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
     `);
@@ -59,6 +59,7 @@ async function render(container) {
     const activeUsers = users.filter((u) => u.activo !== false);
     const user = getCurrentUser();
     const cart = [];
+    const prodSearch = productSearch(activeProducts, { id: 'v-producto' });
 
     openModal('Nueva venta', `
       <label>Cliente
@@ -77,20 +78,18 @@ async function render(container) {
 
       <div class="section-title">Agregar producto</div>
       <div class="form-row">
-        <label>Producto
-          <select id="v-producto">${activeProducts.map((p) => `<option value="${p.id}" data-precio="${p.precioVenta}" data-nombre="${escapeHtml(p.nombre)}" data-stock="${p.stock}">${escapeHtml(p.nombre)} (stock: ${p.stock})</option>`).join('')}</select>
-        </label>
+        ${prodSearch.html}
         <label>Cantidad <input type="number" id="v-cantidad" min="1" step="1" value="1"></label>
       </div>
       <div class="form-row">
-        <label>Precio (Q) <input type="number" id="v-precio" min="0" step="0.01" value="${activeProducts[0].precioVenta}"></label>
+        <label>Precio (Q) <input type="number" id="v-precio" min="0" step="0.01"></label>
         <label>Descuento (Q) <input type="number" id="v-descuento" min="0" step="0.01" value="0"></label>
       </div>
       <button type="button" class="btn btn-secondary" id="v-add">+ Agregar a la venta</button>
       <div id="v-cart-list" class="text-muted mt-16">Sin productos agregados.</div>
 
       <div class="section-title">Totales</div>
-      <p id="v-totales" class="text-right">Subtotal: Q 0.00 · IVA: Q 0.00 · <b>Total: Q 0.00</b></p>
+      <p id="v-totales" class="text-right"><b>Total: Q 0.00</b></p>
 
       <div class="section-title">Forma de pago</div>
       <label>Pago
@@ -125,7 +124,7 @@ async function render(container) {
       }));
     }
 
-    $('v-producto').addEventListener('change', (e) => { $('v-precio').value = e.target.selectedOptions[0].dataset.precio; });
+    const buscador = prodSearch.mount({ onSelect: (p) => { $('v-precio').value = p.precioVenta; } });
 
     function renderCart() {
       const list = $('v-cart-list');
@@ -144,14 +143,13 @@ async function render(container) {
 
     function computeTotals() {
       const subtotal = round2(cart.reduce((s, i) => s + i.subtotal, 0));
-      const iva = calcIVA(subtotal);
-      const total = round2(subtotal + iva);
-      return { subtotal, iva, total };
+      // El precio del producto es el precio final: no se suma IVA.
+      return { subtotal, iva: 0, total: subtotal };
     }
 
     function updateTotals() {
       const { subtotal, iva, total } = computeTotals();
-      $('v-totales').innerHTML = `Subtotal: ${formatQ(subtotal)} · IVA: ${formatQ(iva)} · <b>Total: ${formatQ(total)}</b>`;
+      $('v-totales').innerHTML = `<b>Total: ${formatQ(total)}</b>`;
       if ($('v-pago').value === 'efectivo') {
         const recibido = Number($('v-recibido').value) || 0;
         $('v-vuelto').value = formatQ(Math.max(0, round2(recibido - total)));
@@ -160,15 +158,20 @@ async function render(container) {
     }
 
     $('v-add').addEventListener('click', () => {
-      const opt = $('v-producto').selectedOptions[0];
+      const prod = buscador.getSelected();
+      if (!prod) { toast('Escribe el nombre del producto y elígelo de la lista.', 'danger'); return; }
       const cantidad = Number($('v-cantidad').value);
-      const stock = Number(opt.dataset.stock);
+      const stock = Number(prod.stock);
       if (!cantidad || cantidad <= 0) { toast('Cantidad inválida.', 'danger'); return; }
-      const yaEnCarrito = cart.filter((i) => i.productoId === opt.value).reduce((s, i) => s + i.cantidad, 0);
+      const yaEnCarrito = cart.filter((i) => i.productoId === prod.id).reduce((s, i) => s + i.cantidad, 0);
       if (cantidad + yaEnCarrito > stock) { toast(`Solo hay ${stock} en stock.`, 'danger'); return; }
       const precio = Number($('v-precio').value);
       const descuento = Number($('v-descuento').value) || 0;
-      cart.push({ productoId: opt.value, nombre: opt.dataset.nombre, cantidad, precio, descuento, subtotal: round2(cantidad * precio - descuento) });
+      cart.push({ productoId: prod.id, nombre: prod.nombre, cantidad, precio, descuento, subtotal: round2(cantidad * precio - descuento) });
+      buscador.clear();
+      $('v-precio').value = '';
+      $('v-cantidad').value = 1;
+      $('v-descuento').value = 0;
       renderCart();
     });
 
