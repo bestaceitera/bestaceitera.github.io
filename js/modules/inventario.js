@@ -38,9 +38,9 @@ async function render(container) {
         <b>⚠ Alerta de stock bajo:</b> ${lowStock.map((p) => `${p.nombre} (${p.stock})`).join(', ')}
       </div>` : ''}
     <div class="section-title">Kardex / historial de movimientos</div>
-    <div class="card">${table.html}</div>
+    <div class="card" id="inv-kardex-card">${table.html}</div>
   `;
-  table.mount(container.querySelector('.card'));
+  table.mount(container.querySelector('#inv-kardex-card'));
 }
 
 export default { render };

@@ -166,7 +166,9 @@ async function render(container) {
       const yaEnCarrito = cart.filter((i) => i.productoId === prod.id).reduce((s, i) => s + i.cantidad, 0);
       if (cantidad + yaEnCarrito > stock) { toast(`Solo hay ${stock} en stock.`, 'danger'); return; }
       const precio = Number($('v-precio').value);
+      if (!precio || precio <= 0) { toast('Ingresa un precio válido.', 'danger'); return; }
       const descuento = Number($('v-descuento').value) || 0;
+      if (descuento < 0 || descuento > cantidad * precio) { toast('El descuento no puede ser mayor que el subtotal.', 'danger'); return; }
       cart.push({ productoId: prod.id, nombre: prod.nombre, cantidad, precio, descuento, subtotal: round2(cantidad * precio - descuento) });
       buscador.clear();
       $('v-precio').value = '';
