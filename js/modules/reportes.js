@@ -7,10 +7,24 @@ function dateRangePresetButtons() {
   return `
     <button class="btn btn-secondary btn-sm" data-range="hoy">Hoy</button>
     <button class="btn btn-secondary btn-sm" data-range="semana">Esta semana</button>
+    <button class="btn btn-secondary btn-sm" data-range="quincena">Esta quincena</button>
     <button class="btn btn-secondary btn-sm" data-range="mes">Este mes</button>
     <button class="btn btn-secondary btn-sm" data-range="anio">Este año</button>
     <button class="btn btn-secondary btn-sm" data-range="todo">Todo</button>
+    <input type="date" data-from style="width:auto;padding:5px 8px;font-size:12.5px">
+    <input type="date" data-to style="width:auto;padding:5px 8px;font-size:12.5px">
+    <button class="btn btn-secondary btn-sm" data-apply>Aplicar fechas</button>
   `;
+}
+
+function bindRangeControls(el, setRange) {
+  el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => setRange(applyRangePreset(b.dataset.range))));
+  el.querySelector('[data-apply]')?.addEventListener('click', () => {
+    const from = el.querySelector('[data-from]').value;
+    const to = el.querySelector('[data-to]').value;
+    if (!from || !to || from > to) return;
+    setRange({ from, to });
+  });
 }
 
 function applyRangePreset(range) {
@@ -21,6 +35,11 @@ function applyRangePreset(range) {
     const day = now.getDay() || 7;
     const monday = new Date(now); monday.setDate(now.getDate() - day + 1);
     return { from: iso(monday), to: todayISO() };
+  }
+  if (range === 'quincena') {
+    // Quincena guatemalteca: del 1 al 15, o del 16 al fin de mes.
+    const inicio = now.getDate() <= 15 ? 1 : 16;
+    return { from: iso(new Date(now.getFullYear(), now.getMonth(), inicio)), to: todayISO() };
   }
   if (range === 'mes') return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: todayISO() };
   if (range === 'anio') return { from: iso(new Date(now.getFullYear(), 0, 1)), to: todayISO() };
@@ -105,7 +124,7 @@ async function render(container) {
       document.getElementById('rep-ventas-table').innerHTML = t.html;
       t.mount(document.getElementById('rep-ventas-table'));
       bindExportButtons(el, { title: 'Reporte de ventas', columns: cols, getRows: () => rows, filename: 'reporte_ventas' });
-      el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => { range = applyRangePreset(b.dataset.range); draw(); }));
+      bindRangeControls(el, (r) => { range = r; draw(); });
     }
     draw();
   }
@@ -262,7 +281,7 @@ async function render(container) {
 
       el.innerHTML = `
         <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
-        <div class="stat-card mt-16" style="max-width:260px"><div class="label">Total comisiones del período</div><div class="value">${formatQ(totalComisiones)}</div></div>
+        <div class="stat-card mt-16" style="max-width:320px"><div class="label">Total comisiones · ${range.from} a ${range.to}</div><div class="value">${formatQ(totalComisiones)}</div></div>
         <div class="card mt-16"><div id="rep-comisiones-table"></div></div>
       `;
       const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Sin comisiones en el período.' });
@@ -279,7 +298,7 @@ async function render(container) {
         const nombre = e.target.dataset.emp;
         if (nombre) showEmployeeDetail(agg[nombre]);
       });
-      el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => { range = applyRangePreset(b.dataset.range); draw(); }));
+      bindRangeControls(el, (r) => { range = r; draw(); });
     }
 
     function showEmployeeDetail(r) {
