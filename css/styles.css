@@ -122,7 +122,14 @@ tbody tr:hover{background:var(--bg)}
 .text-muted{color:var(--text-muted)}
 .mt-16{margin-top:16px}
 .section-title{font-size:14px;font-weight:700;margin:18px 0 10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em}
-.cart-line{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+.cart-line{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.cart-name{flex:1;min-width:140px;font-weight:600;font-size:13.5px}
+.cart-qty{display:flex;align-items:center;gap:4px}
+.cart-qty input{width:52px;text-align:center;padding:5px 4px}
+.cart-qty .btn{min-width:30px;font-size:15px;line-height:1;padding:5px 8px}
+.cart-price{display:flex;align-items:center;gap:4px;font-size:12.5px;color:var(--text-muted)}
+.cart-price input{width:74px;padding:5px 6px}
+.cart-sub{width:86px;text-align:right}
 .cart-line:last-child{border-bottom:none}
 .tag-list{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:var(--primary-light);color:var(--primary-dark);padding:5px 10px;border-radius:20px;font-size:12.5px;display:flex;align-items:center;gap:6px}
@@ -140,4 +147,5 @@ tbody tr:hover{background:var(--bg)}
 .prod-search-item.is-empty:hover{background:none}
 
 /* Aviso: producto elegido en el buscador pero aún no agregado a la venta/orden */
-.pending-notice{margin-top:10px;padding:10px 12px;border:1px solid var(--danger);background:var(--danger-light);color:var(--danger);border-radius:8px;font-size:13px;font-weight:600}
+.prod-search-item.is-out{opacity:.55}
+.prod-search-item small{font-weight:400}

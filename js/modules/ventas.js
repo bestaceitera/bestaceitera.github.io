@@ -39,10 +39,10 @@ async function render(container) {
     openModal(`Venta ${s.numero}`, `
       <p><b>Cliente:</b> ${escapeHtml(s.clienteNombre)} &nbsp; <b>Fecha:</b> ${escapeHtml(s.fecha)} &nbsp; <b>Usuario:</b> ${escapeHtml(s.usuarioNombre)}</p>
       <div class="table-wrap"><table>
-        <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Desc.</th><th>Subtotal</th></tr></thead>
-        <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.descuento)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
+        <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
+        <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
       </table></div>
-      <p class="mt-16 text-right">${s.iva > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>IVA (12%): ${formatQ(s.iva)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
+      <p class="mt-16 text-right">${s.iva > 0 ? `IVA (12%): ${formatQ(s.iva)}<br>` : ''}${s.descuentoTotal > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>Descuento: −${formatQ(s.descuentoTotal)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
       <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
       <p><b>Empleados:</b> ${(s.empleadosComision || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
     `);
@@ -59,7 +59,7 @@ async function render(container) {
     const activeUsers = users.filter((u) => u.activo !== false);
     const user = getCurrentUser();
     const cart = [];
-    const prodSearch = productSearch(activeProducts, { id: 'v-producto' });
+    const prodSearch = productSearch(activeProducts, { id: 'v-producto', label: 'Buscar producto', clearOnSelect: true });
 
     openModal('Nueva venta', `
       <label>Cliente
@@ -76,20 +76,14 @@ async function render(container) {
           </label>`).join('') || '<span class="text-muted">No hay usuarios activos.</span>'}
       </div>
 
-      <div class="section-title">Agregar producto</div>
-      <div class="form-row">
-        ${prodSearch.html}
-        <label>Cantidad <input type="number" id="v-cantidad" min="1" step="1" value="1"></label>
-      </div>
-      <div class="form-row">
-        <label>Precio (Q) <input type="number" id="v-precio" min="0" step="0.01"></label>
-        <label>Descuento (Q) <input type="number" id="v-descuento" min="0" step="0.01" value="0"></label>
-      </div>
-      <button type="button" class="btn btn-primary btn-block" id="v-add">+ Agregar a la venta</button>
+      <div class="section-title">Productos</div>
+      ${prodSearch.html}
       <div id="v-cart-list" class="text-muted mt-16">Sin productos agregados.</div>
 
-      <div class="section-title">Totales</div>
-      <p id="v-totales" class="text-right"><b>Total: Q 0.00</b></p>
+      <div class="form-row mt-16">
+        <label>Descuento (Q) <input type="number" id="v-descuento" min="0" step="0.01" value="0"></label>
+        <p id="v-totales" class="text-right" style="align-self:flex-end;margin:0"><b>Total: Q 0.00</b></p>
+      </div>
 
       <div class="section-title">Forma de pago</div>
       <label>Pago
@@ -124,75 +118,83 @@ async function render(container) {
       }));
     }
 
-    const buscador = prodSearch.mount({ onSelect: (p) => { $('v-precio').value = p.precioVenta; renderCart(); } });
+    // Un toque en el buscador agrega el producto a la venta; si ya estaba, suma uno más.
+    prodSearch.mount({
+      onSelect: (p) => {
+        const existente = cart.find((i) => i.productoId === p.id);
+        if (existente) {
+          if (existente.cantidad + 1 > Number(p.stock)) { toast(`Solo hay ${p.stock} de ${p.nombre}.`, 'danger'); return; }
+          existente.cantidad += 1;
+        } else {
+          if (Number(p.stock) < 1) { toast(`${p.nombre} no tiene stock.`, 'danger'); return; }
+          cart.push({ productoId: p.id, nombre: p.nombre, stock: Number(p.stock), cantidad: 1, precio: Number(p.precioVenta), descuento: 0 });
+        }
+        renderCart();
+      },
+    });
 
     function renderCart() {
       const list = $('v-cart-list');
-      const lineas = cart.length ? cart.map((i, idx) => `
+      if (!cart.length) {
+        list.innerHTML = '<span class="text-muted">Todavía no has agregado productos. Búscalos arriba y tócalos para agregarlos.</span>';
+        updateTotals();
+        return;
+      }
+      list.innerHTML = cart.map((i, idx) => `
         <div class="cart-line">
-          <span style="flex:1">${escapeHtml(i.nombre)}</span>
-          <span>${i.cantidad} x ${formatQ(i.precio)}${i.descuento ? ` − ${formatQ(i.descuento)}` : ''}</span>
-          <b style="width:90px;text-align:right">${formatQ(i.subtotal)}</b>
+          <span class="cart-name">${escapeHtml(i.nombre)}</span>
+          <span class="cart-qty">
+            <button type="button" class="btn btn-secondary btn-sm" data-dec="${idx}">−</button>
+            <input type="number" min="1" step="1" value="${i.cantidad}" data-qty="${idx}">
+            <button type="button" class="btn btn-secondary btn-sm" data-inc="${idx}">+</button>
+          </span>
+          <span class="cart-price">Q <input type="number" min="0" step="0.01" value="${i.precio}" data-price="${idx}"></span>
+          <b class="cart-sub">${formatQ(round2(i.cantidad * i.precio))}</b>
           <button type="button" class="btn btn-danger btn-sm" data-rm="${idx}">✕</button>
-        </div>`).join('') : '<span class="text-muted">Sin productos agregados.</span>';
-      // Aviso cuando se eligió un producto pero todavía no se agregó a la venta.
-      const pendiente = buscador?.getSelected?.();
-      list.innerHTML = lineas + (pendiente
-        ? `<div class="pending-notice">⚠ <b>${escapeHtml(pendiente.nombre)}</b> todavía NO está en la venta. Presiona “+ Agregar a la venta”.</div>`
-        : '');
-      list.querySelectorAll('[data-rm]').forEach((btn) => btn.addEventListener('click', () => {
-        cart.splice(Number(btn.dataset.rm), 1); renderCart();
+        </div>`).join('');
+
+      const setQty = (idx, valor) => {
+        const item = cart[idx];
+        const n = Math.max(1, Math.floor(Number(valor) || 1));
+        if (n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
+        else item.cantidad = n;
+        renderCart();
+      };
+      list.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => { cart.splice(Number(b.dataset.rm), 1); renderCart(); }));
+      list.querySelectorAll('[data-inc]').forEach((b) => b.addEventListener('click', () => setQty(Number(b.dataset.inc), cart[Number(b.dataset.inc)].cantidad + 1)));
+      list.querySelectorAll('[data-dec]').forEach((b) => b.addEventListener('click', () => {
+        const idx = Number(b.dataset.dec);
+        if (cart[idx].cantidad <= 1) { cart.splice(idx, 1); renderCart(); } else setQty(idx, cart[idx].cantidad - 1);
+      }));
+      list.querySelectorAll('[data-qty]').forEach((el) => el.addEventListener('change', () => setQty(Number(el.dataset.qty), el.value)));
+      list.querySelectorAll('[data-price]').forEach((el) => el.addEventListener('change', () => {
+        cart[Number(el.dataset.price)].precio = Math.max(0, Number(el.value) || 0);
+        renderCart();
       }));
       updateTotals();
     }
 
     function computeTotals() {
-      const subtotal = round2(cart.reduce((s, i) => s + i.subtotal, 0));
       // El precio del producto es el precio final: no se suma IVA.
-      return { subtotal, iva: 0, total: subtotal };
+      const subtotal = round2(cart.reduce((s, i) => s + i.cantidad * i.precio, 0));
+      const descuento = Math.min(Math.max(0, Number($('v-descuento').value) || 0), subtotal);
+      return { subtotal, descuento, iva: 0, total: round2(subtotal - descuento) };
     }
 
     function updateTotals() {
-      const { subtotal, iva, total } = computeTotals();
-      $('v-totales').innerHTML = `<b>Total: ${formatQ(total)}</b>`;
+      const { subtotal, descuento, total } = computeTotals();
+      $('v-totales').innerHTML = descuento
+        ? `<span class="text-muted">Subtotal ${formatQ(subtotal)} − ${formatQ(descuento)}</span><br><b>Total: ${formatQ(total)}</b>`
+        : `<b>Total: ${formatQ(total)}</b>`;
       if ($('v-pago').value === 'efectivo') {
         const recibido = Number($('v-recibido').value) || 0;
-        // Sin productos en la venta no hay vuelto que entregar: mostrar el monto
-        // recibido completo como "vuelto" haría que se entregue dinero de más.
-        $('v-vuelto').value = cart.length
-          ? formatQ(Math.max(0, round2(recibido - total)))
-          : 'Agrega productos primero';
+        // Sin nada que cobrar no hay vuelto que entregar.
+        $('v-vuelto').value = formatQ(total > 0 ? Math.max(0, round2(recibido - total)) : 0);
       }
-      return { subtotal, iva, total };
+      return computeTotals();
     }
 
-    $('v-add').addEventListener('click', () => {
-      const prod = buscador.getSelected();
-      if (!prod) { toast('Escribe el nombre del producto y elígelo de la lista.', 'danger'); return; }
-      const cantidad = Number($('v-cantidad').value);
-      const stock = Number(prod.stock);
-      if (!cantidad || cantidad <= 0) { toast('Cantidad inválida.', 'danger'); return; }
-      const yaEnCarrito = cart.filter((i) => i.productoId === prod.id).reduce((s, i) => s + i.cantidad, 0);
-      if (cantidad + yaEnCarrito > stock) { toast(`Solo hay ${stock} en stock.`, 'danger'); return; }
-      const precio = Number($('v-precio').value);
-      if (!precio || precio <= 0) { toast('Ingresa un precio válido.', 'danger'); return; }
-      const descuento = Number($('v-descuento').value) || 0;
-      if (descuento < 0 || descuento > cantidad * precio) { toast('El descuento no puede ser mayor que el subtotal.', 'danger'); return; }
-      cart.push({ productoId: prod.id, nombre: prod.nombre, cantidad, precio, descuento, subtotal: round2(cantidad * precio - descuento) });
-      buscador.clear();
-      $('v-precio').value = '';
-      $('v-cantidad').value = 1;
-      $('v-descuento').value = 0;
-      renderCart();
-    });
-
-    // Enter en cantidad/precio/descuento agrega el producto (más rápido en mostrador).
-    ['v-cantidad', 'v-precio', 'v-descuento'].forEach((id) => {
-      $(id).addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); $('v-add').click(); }
-      });
-    });
-
+    $('v-descuento').addEventListener('input', updateTotals);
     $('v-recibido').addEventListener('input', updateTotals);
     $('v-pago').addEventListener('change', (e) => {
       $('v-pago-efectivo').style.display = e.target.value === 'efectivo' ? '' : 'none';
@@ -204,7 +206,7 @@ async function render(container) {
       if (!cart.length) { toast('Agrega al menos un producto.', 'danger'); return; }
       const empleadosComision = selectedEmpleados();
       if (!empleadosComision.length) { toast('Selecciona al menos un empleado que realizó la venta.', 'danger'); return; }
-      const { subtotal, iva, total } = computeTotals();
+      const { subtotal, descuento, iva, total } = computeTotals();
       const formaPago = $('v-pago').value;
       let montoRecibido = total, vuelto = 0;
 
@@ -231,7 +233,11 @@ async function render(container) {
         const saleId = await addRecord('sales', {
           numero, fecha: todayISO(), usuarioId: user.uid, usuarioNombre: user.nombre,
           clienteId, clienteNombre, clienteTipo: clienteId === 'CF' ? 'CF' : 'registrado',
-          items: cart, subtotal, descuentoTotal: round2(cart.reduce((s, i) => s + i.descuento, 0)),
+          items: cart.map((i) => ({
+            productoId: i.productoId, nombre: i.nombre, cantidad: i.cantidad,
+            precio: i.precio, descuento: 0, subtotal: round2(i.cantidad * i.precio),
+          })),
+          subtotal, descuentoTotal: descuento,
           iva, total, formaPago, montoRecibido, vuelto, empleadosComision,
         });
 

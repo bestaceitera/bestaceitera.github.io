@@ -121,10 +121,10 @@ export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emp
  * Devuelve { html, mount }. mount({ onSelect }) engancha los eventos y
  * devuelve { getSelected, clear }.
  */
-export function productSearch(products, { id = 'prod-search', label = 'Producto (escribe para buscar)' } = {}) {
+export function productSearch(products, { id = 'prod-search', label = 'Producto (escribe para buscar)', clearOnSelect = false } = {}) {
   const html = `
     <label class="prod-search">${escapeHtml(label)}
-      <input type="text" id="${id}" placeholder="Escribe el nombre del producto…" autocomplete="off">
+      <input type="text" id="${id}" placeholder="Escribe y toca el producto para agregarlo…" autocomplete="off">
       <div class="prod-search-results" id="${id}-results" hidden></div>
     </label>`;
 
@@ -133,18 +133,23 @@ export function productSearch(products, { id = 'prod-search', label = 'Producto 
     const results = document.getElementById(`${id}-results`);
     let selected = null;
 
+    // Se busca por nombre, marca, categoría, viscosidad y presentación, así no hace
+    // falta repetir la marca dentro del nombre del producto para poder encontrarlo.
+    const haystack = (p) => `${p.nombre} ${p.marca || ''} ${p.categoria || ''} ${p.viscosidad || ''} ${p.presentacion || ''}`.toLowerCase();
+
     function show() {
       const t = input.value.trim().toLowerCase();
-      const matches = (t
-        ? products.filter((p) => `${p.nombre} ${p.viscosidad || ''} ${p.presentacion || ''} ${p.marca || ''}`.toLowerCase().includes(t))
-        : products
-      ).slice(0, 25);
+      const matches = (t ? products.filter((p) => haystack(p).includes(t)) : products).slice(0, 25);
       results.innerHTML = matches.length
-        ? matches.map((p) => `
-            <div class="prod-search-item" data-id="${p.id}">
-              <span>${escapeHtml(p.nombre)}</span>
-              <span class="text-muted">stock: ${p.stock} · ${formatQ(p.precioVenta)}</span>
-            </div>`).join('')
+        ? matches.map((p) => {
+            const detalle = [p.marca, p.presentacion, p.viscosidad].filter(Boolean).join(' · ');
+            const sinStock = Number(p.stock) <= 0;
+            return `
+            <div class="prod-search-item${sinStock ? ' is-out' : ''}" data-id="${p.id}">
+              <span>${escapeHtml(p.nombre)}${detalle ? ` <small class="text-muted">${escapeHtml(detalle)}</small>` : ''}</span>
+              <span class="text-muted">${sinStock ? 'sin stock' : `stock: ${p.stock}`} · ${formatQ(p.precioVenta)}</span>
+            </div>`;
+          }).join('')
         : `<div class="prod-search-item is-empty text-muted">No se encontró ningún producto con ese nombre.</div>`;
       results.hidden = false;
     }
@@ -157,15 +162,26 @@ export function productSearch(products, { id = 'prod-search', label = 'Producto 
       if (!item) return;
       e.preventDefault();
       selected = products.find((p) => p.id === item.dataset.id) || null;
-      input.value = selected ? selected.nombre : '';
-      results.hidden = true;
-      if (selected && onSelect) onSelect(selected);
+      if (!selected) return;
+      if (clearOnSelect) {
+        // Modo "agregar de un toque": deja el campo listo para el siguiente producto.
+        input.value = '';
+        results.hidden = true;
+        onSelect?.(selected);
+        selected = null;
+        input.focus();
+      } else {
+        input.value = selected.nombre;
+        results.hidden = true;
+        onSelect?.(selected);
+      }
     });
     input.addEventListener('blur', () => { setTimeout(() => { results.hidden = true; }, 150); });
 
     return {
       getSelected: () => selected,
       clear: () => { selected = null; input.value = ''; results.hidden = true; },
+      focus: () => input.focus(),
     };
   }
 

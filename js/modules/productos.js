@@ -53,8 +53,17 @@ async function render(container) {
     if (delId) onDelete(delId);
   });
 
-  function optionList(list, selected) {
-    return list.map((c) => `<option value="${escapeHtml(c.nombre)}" ${c.nombre === selected ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('');
+  function datalistOptions(list) {
+    return list.map((c) => `<option value="${escapeHtml(c.nombre)}">`).join('');
+  }
+
+  /** Si la marca/categoría escrita todavía no existe en su catálogo, se crea sola. */
+  async function ensureCatalogo(collectionName, existentes, nombre) {
+    const limpio = (nombre || '').trim();
+    if (!limpio) return '';
+    const yaExiste = existentes.some((c) => c.nombre.toLowerCase() === limpio.toLowerCase());
+    if (!yaExiste) await addRecord(collectionName, { nombre: limpio, activo: true });
+    return limpio;
   }
 
   function openForm(item) {
@@ -65,12 +74,15 @@ async function render(container) {
         </label>
         <div class="form-row">
           <label>Marca
-            <select name="marca">${categories.length === 0 && brands.length === 0 ? '' : optionList(brands, item?.marca)}</select>
+            <input name="marca" list="lista-marcas" autocomplete="off" placeholder="Escribe o elige" value="${escapeHtml(item?.marca || '')}">
+            <datalist id="lista-marcas">${datalistOptions(brands)}</datalist>
           </label>
           <label>Categoría
-            <select name="categoria">${optionList(categories, item?.categoria)}</select>
+            <input name="categoria" list="lista-categorias" autocomplete="off" placeholder="Escribe o elige" value="${escapeHtml(item?.categoria || '')}">
+            <datalist id="lista-categorias">${datalistOptions(categories)}</datalist>
           </label>
         </div>
+        <p class="text-muted" style="font-size:12.5px;margin:-4px 0 8px">Si escribes una marca o categoría nueva, se crea sola. No hace falta registrarla antes.</p>
         <div class="form-row">
           <label>Viscosidad
             <input name="viscosidad" placeholder="ej. 5W-30" value="${escapeHtml(item?.viscosidad || '')}">
@@ -111,10 +123,14 @@ async function render(container) {
     document.getElementById('prod-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
+      const [marca, categoria] = await Promise.all([
+        ensureCatalogo('brands', allBrands, v.marca),
+        ensureCatalogo('categories', allCategories, v.categoria),
+      ]);
       const data = {
         nombre: v.nombre.trim(),
-        marca: v.marca || '',
-        categoria: v.categoria || '',
+        marca,
+        categoria,
         viscosidad: v.viscosidad.trim(),
         presentacion: v.presentacion.trim(),
         precioCompra: Number(v.precioCompra),

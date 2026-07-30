@@ -47,7 +47,7 @@ async function render(container) {
         <tbody>${o.productos.map((p) => `<tr><td>${escapeHtml(p.nombre)}</td><td>${p.cantidad}</td><td>${formatQ(p.precio)}</td><td>${formatQ(p.subtotal)}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="text-muted">Ninguno</p>'}
       ${o.observaciones ? `<p class="mt-16"><b>Observaciones:</b> ${escapeHtml(o.observaciones)}</p>` : ''}
-      <p class="mt-16">Mano de obra: ${formatQ(o.costoManoObra)} &nbsp; Productos: ${formatQ(o.costoProductos)}</p>
+      <p class="mt-16">Servicios: ${formatQ(o.costoServicios ?? 0)} &nbsp; Productos: ${formatQ(o.costoProductos)}${o.costoManoObra ? ` &nbsp; Mano de obra: ${formatQ(o.costoManoObra)}` : ''}</p>
       <p class="text-right"><b>Total: ${formatQ(o.total)}</b></p>
     `);
   }
@@ -65,7 +65,7 @@ async function render(container) {
 
     const productCart = [];
     const activeProducts = products.filter((p) => p.estado !== 'inactivo');
-    const prodSearch = productSearch(activeProducts, { id: 'os-producto' });
+    const prodSearch = productSearch(activeProducts, { id: 'os-producto', label: 'Buscar producto', clearOnSelect: true });
 
     openModal('Nueva orden de servicio', `
       <label>Cliente
@@ -100,22 +100,12 @@ async function render(container) {
       </div>
 
       <div class="section-title">Productos utilizados</div>
-      <div class="form-row">
-        ${prodSearch.html}
-        <label>Cantidad <input type="number" id="os-cantidad" min="1" step="1" value="1"></label>
-      </div>
-      <button type="button" class="btn btn-primary btn-block" id="os-add-prod">+ Agregar producto</button>
+      ${prodSearch.html}
       <div id="os-cart-list" class="text-muted mt-16">Sin productos agregados.</div>
 
-      <div class="section-title">Costos</div>
-      <div class="form-row">
-        <label>Costo mano de obra (Q)
-          <input type="number" id="os-mano-obra" min="0" step="0.01" value="0">
-        </label>
-        <label style="display:flex;align-items:flex-end">
-          <button type="button" class="btn btn-secondary btn-block" id="os-sum-servicios">Usar suma de servicios como mano de obra</button>
-        </label>
-      </div>
+      <label class="mt-16">Mano de obra adicional (Q) — opcional
+        <input type="number" id="os-mano-obra" min="0" step="0.01" value="0">
+      </label>
       <label>Observaciones <textarea id="os-obs" rows="2"></textarea></label>
 
       <div class="section-title">Forma de pago</div>
@@ -158,69 +148,79 @@ async function render(container) {
       }));
     }
 
+    // Un toque en el buscador agrega el producto; si ya estaba, suma uno más.
+    prodSearch.mount({
+      onSelect: (p) => {
+        const existente = productCart.find((i) => i.productoId === p.id);
+        if (existente) {
+          if (existente.cantidad + 1 > Number(p.stock)) { toast(`Solo hay ${p.stock} de ${p.nombre}.`, 'danger'); return; }
+          existente.cantidad += 1;
+        } else {
+          if (Number(p.stock) < 1) { toast(`${p.nombre} no tiene stock.`, 'danger'); return; }
+          productCart.push({ productoId: p.id, nombre: p.nombre, stock: Number(p.stock), cantidad: 1, precio: Number(p.precioVenta) });
+        }
+        renderCart();
+      },
+    });
+
     function renderCart() {
       const list = $('os-cart-list');
-      const lineas = productCart.length ? productCart.map((i, idx) => `
+      if (!productCart.length) {
+        list.innerHTML = '<span class="text-muted">Sin productos. Búscalos arriba y tócalos para agregarlos.</span>';
+        updateTotal();
+        return;
+      }
+      list.innerHTML = productCart.map((i, idx) => `
         <div class="cart-line">
-          <span style="flex:1">${escapeHtml(i.nombre)}</span>
-          <span>${i.cantidad} x ${formatQ(i.precio)}</span>
-          <b style="width:90px;text-align:right">${formatQ(i.subtotal)}</b>
+          <span class="cart-name">${escapeHtml(i.nombre)}</span>
+          <span class="cart-qty">
+            <button type="button" class="btn btn-secondary btn-sm" data-dec="${idx}">−</button>
+            <input type="number" min="1" step="1" value="${i.cantidad}" data-qty="${idx}">
+            <button type="button" class="btn btn-secondary btn-sm" data-inc="${idx}">+</button>
+          </span>
+          <span class="cart-price">Q <input type="number" min="0" step="0.01" value="${i.precio}" data-price="${idx}"></span>
+          <b class="cart-sub">${formatQ(round2(i.cantidad * i.precio))}</b>
           <button type="button" class="btn btn-danger btn-sm" data-rm="${idx}">✕</button>
-        </div>`).join('') : '<span class="text-muted">Sin productos agregados.</span>';
-      // Aviso cuando se eligió un producto pero todavía no se agregó a la orden.
-      const pendiente = buscador?.getSelected?.();
-      list.innerHTML = lineas + (pendiente
-        ? `<div class="pending-notice">⚠ <b>${escapeHtml(pendiente.nombre)}</b> todavía NO está en la orden. Presiona “+ Agregar producto”.</div>`
-        : '');
-      list.querySelectorAll('[data-rm]').forEach((btn) => btn.addEventListener('click', () => {
-        productCart.splice(Number(btn.dataset.rm), 1); renderCart(); updateTotal();
+        </div>`).join('');
+
+      const setQty = (idx, valor) => {
+        const item = productCart[idx];
+        const n = Math.max(1, Math.floor(Number(valor) || 1));
+        if (n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
+        else item.cantidad = n;
+        renderCart();
+      };
+      list.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => { productCart.splice(Number(b.dataset.rm), 1); renderCart(); }));
+      list.querySelectorAll('[data-inc]').forEach((b) => b.addEventListener('click', () => setQty(Number(b.dataset.inc), productCart[Number(b.dataset.inc)].cantidad + 1)));
+      list.querySelectorAll('[data-dec]').forEach((b) => b.addEventListener('click', () => {
+        const idx = Number(b.dataset.dec);
+        if (productCart[idx].cantidad <= 1) { productCart.splice(idx, 1); renderCart(); } else setQty(idx, productCart[idx].cantidad - 1);
+      }));
+      list.querySelectorAll('[data-qty]').forEach((el) => el.addEventListener('change', () => setQty(Number(el.dataset.qty), el.value)));
+      list.querySelectorAll('[data-price]').forEach((el) => el.addEventListener('change', () => {
+        productCart[Number(el.dataset.price)].precio = Math.max(0, Number(el.value) || 0);
+        renderCart();
       }));
       updateTotal();
     }
 
     function updateTotal() {
-      const costoProductos = round2(productCart.reduce((s, i) => s + i.subtotal, 0));
+      // Los servicios marcados ya cobran su precio; la mano de obra es un monto
+      // adicional opcional que el usuario decide.
+      const costoServicios = round2(selectedServicios().reduce((s, sv) => s + sv.precio, 0));
+      const costoProductos = round2(productCart.reduce((s, i) => s + i.cantidad * i.precio, 0));
       const manoObra = Number($('os-mano-obra').value) || 0;
-      const total = round2(costoProductos + manoObra);
-      $('os-total').textContent = `Total: ${formatQ(total)}`;
+      const total = round2(costoServicios + costoProductos + manoObra);
+      $('os-total').innerHTML = `<span class="text-muted" style="font-weight:400">Servicios ${formatQ(costoServicios)} · Productos ${formatQ(costoProductos)}${manoObra ? ` · Mano de obra ${formatQ(manoObra)}` : ''}</span><br>Total: ${formatQ(total)}`;
       if ($('os-pago').value === 'efectivo') {
         const recibido = Number($('os-recibido').value) || 0;
-        // Con total en cero no hay vuelto que entregar (evita mostrar el monto
-        // recibido completo como si fuera cambio para el cliente).
-        $('os-vuelto').value = total > 0
-          ? formatQ(Math.max(0, round2(recibido - total)))
-          : 'Falta cobrar el servicio';
+        // Sin nada que cobrar no hay vuelto que entregar.
+        $('os-vuelto').value = formatQ(total > 0 ? Math.max(0, round2(recibido - total)) : 0);
       }
-      return { costoProductos, manoObra, total };
+      return { costoServicios, costoProductos, manoObra, total };
     }
 
-    const buscador = prodSearch.mount({ onSelect: () => renderCart() });
-
-    $('os-cantidad').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); $('os-add-prod').click(); }
-    });
-
-    $('os-add-prod').addEventListener('click', () => {
-      if (!activeProducts.length) { toast('No hay productos en el catálogo para agregar.', 'danger'); return; }
-      const prod = buscador.getSelected();
-      if (!prod) { toast('Escribe el nombre del producto y elígelo de la lista.', 'danger'); return; }
-      const cantidad = Number($('os-cantidad').value);
-      const stock = Number(prod.stock);
-      if (!cantidad || cantidad <= 0) { toast('Cantidad inválida.', 'danger'); return; }
-      const yaEnCarrito = productCart.filter((i) => i.productoId === prod.id).reduce((s, i) => s + i.cantidad, 0);
-      if (cantidad + yaEnCarrito > stock) { toast(`Solo hay ${stock} en stock.`, 'danger'); return; }
-      const precio = Number(prod.precioVenta);
-      productCart.push({ productoId: prod.id, nombre: prod.nombre, cantidad, precio, subtotal: round2(cantidad * precio) });
-      buscador.clear();
-      $('os-cantidad').value = 1;
-      renderCart();
-    });
-
-    $('os-sum-servicios').addEventListener('click', () => {
-      const sum = round2(selectedServicios().reduce((s, sv) => s + sv.precio, 0));
-      $('os-mano-obra').value = sum;
-      updateTotal();
-    });
+    document.getElementById('os-servicios').addEventListener('change', updateTotal);
     $('os-mano-obra').addEventListener('input', updateTotal);
     $('os-recibido').addEventListener('input', updateTotal);
     $('os-pago').addEventListener('change', (e) => {
@@ -232,7 +232,8 @@ async function render(container) {
     $('os-save').addEventListener('click', async () => {
       const empleadosOrden = selectedEmpleados();
       if (!empleadosOrden.length) { toast('Selecciona al menos un empleado que realizó el servicio.', 'danger'); return; }
-      const { costoProductos, manoObra, total } = updateTotal();
+      const { costoServicios, costoProductos, manoObra, total } = updateTotal();
+      if (total <= 0) { toast('La orden no tiene ningún cobro: marca un servicio, agrega productos o pon mano de obra.', 'danger'); return; }
       const formaPago = $('os-pago').value;
       let recibido = Number($('os-recibido').value) || 0;
       let efectivoMixto = 0;
@@ -257,10 +258,14 @@ async function render(container) {
           clienteId, clienteNombre,
           vehiculo: { marca: $('os-v-marca').value.trim(), modelo: $('os-v-modelo').value.trim(), anio: $('os-v-anio').value, placa: $('os-v-placa').value.trim().toUpperCase() },
           servicios: selectedServicios(),
-          productos: productCart,
+          productos: productCart.map((i) => ({
+            productoId: i.productoId, nombre: i.nombre, cantidad: i.cantidad,
+            precio: i.precio, subtotal: round2(i.cantidad * i.precio),
+          })),
           empleados: empleadosOrden,
           observaciones: $('os-obs').value.trim(),
           costoManoObra: manoObra,
+          costoServicios,
           costoProductos,
           total,
           formaPago,
