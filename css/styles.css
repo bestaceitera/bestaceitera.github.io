@@ -149,3 +149,6 @@ tbody tr:hover{background:var(--bg)}
 /* Aviso: producto elegido en el buscador pero aún no agregado a la venta/orden */
 .prod-search-item.is-out{opacity:.55}
 .prod-search-item small{font-weight:400}
+.mas-detalles{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.mas-detalles summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--primary)}
+.mas-detalles[open] summary{margin-bottom:4px}

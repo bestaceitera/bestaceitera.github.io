@@ -69,28 +69,15 @@ async function render(container) {
   function openForm(item) {
     openModal(item ? 'Editar producto' : 'Nuevo producto', `
       <form id="prod-form">
-        <label>Nombre
-          <input name="nombre" required value="${escapeHtml(item?.nombre || '')}">
+        <label>Nombre del producto
+          <input name="nombre" required autocomplete="off" placeholder="ej. Prodin Car Kool Verde" value="${escapeHtml(item?.nombre || '')}">
         </label>
-        <div class="form-row">
-          <label>Marca
-            <input name="marca" list="lista-marcas" autocomplete="off" placeholder="Escribe o elige" value="${escapeHtml(item?.marca || '')}">
-            <datalist id="lista-marcas">${datalistOptions(brands)}</datalist>
-          </label>
-          <label>Categoría
-            <input name="categoria" list="lista-categorias" autocomplete="off" placeholder="Escribe o elige" value="${escapeHtml(item?.categoria || '')}">
-            <datalist id="lista-categorias">${datalistOptions(categories)}</datalist>
-          </label>
-        </div>
-        <p class="text-muted" style="font-size:12.5px;margin:-4px 0 8px">Si escribes una marca o categoría nueva, se crea sola. No hace falta registrarla antes.</p>
-        <div class="form-row">
-          <label>Viscosidad
-            <input name="viscosidad" placeholder="ej. 5W-30" value="${escapeHtml(item?.viscosidad || '')}">
-          </label>
-          <label>Presentación
-            <input name="presentacion" placeholder="ej. Galón, 1L" value="${escapeHtml(item?.presentacion || '')}">
-          </label>
-        </div>
+        <label>Marca
+          <input name="marca" list="lista-marcas" autocomplete="off" placeholder="Se llena sola con el nombre" value="${escapeHtml(item?.marca || '')}">
+          <datalist id="lista-marcas">${datalistOptions(brands)}</datalist>
+        </label>
+        <p class="text-muted" id="marca-hint" style="font-size:12.5px;margin:-4px 0 10px"></p>
+
         <div class="form-row">
           <label>Precio de compra (Q)
             <input name="precioCompra" type="number" step="0.01" min="0" required value="${item?.precioCompra ?? ''}">
@@ -103,16 +90,35 @@ async function render(container) {
           <label>Stock actual
             <input name="stock" type="number" step="1" min="0" required value="${item?.stock ?? 0}">
           </label>
-          <label>Stock mínimo
+          <label>Avisarme cuando baje a
             <input name="stockMinimo" type="number" step="1" min="0" required value="${item?.stockMinimo ?? 0}">
           </label>
         </div>
-        <label>Estado
-          <select name="estado">
-            <option value="activo" ${item?.estado !== 'inactivo' ? 'selected' : ''}>Activo</option>
-            <option value="inactivo" ${item?.estado === 'inactivo' ? 'selected' : ''}>Inactivo</option>
-          </select>
-        </label>
+
+        <details class="mas-detalles"${item && (item.categoria || item.viscosidad || item.presentacion || item.estado === 'inactivo') ? ' open' : ''}>
+          <summary>Más detalles (opcional)</summary>
+          <div class="form-row mt-16">
+            <label>Categoría
+              <input name="categoria" list="lista-categorias" autocomplete="off" placeholder="Escribe o elige" value="${escapeHtml(item?.categoria || '')}">
+              <datalist id="lista-categorias">${datalistOptions(categories)}</datalist>
+            </label>
+            <label>Presentación
+              <input name="presentacion" placeholder="ej. Galón, 1L" value="${escapeHtml(item?.presentacion || '')}">
+            </label>
+          </div>
+          <div class="form-row">
+            <label>Viscosidad
+              <input name="viscosidad" placeholder="ej. 5W-30" value="${escapeHtml(item?.viscosidad || '')}">
+            </label>
+            <label>Estado
+              <select name="estado">
+                <option value="activo" ${item?.estado !== 'inactivo' ? 'selected' : ''}>Activo</option>
+                <option value="inactivo" ${item?.estado === 'inactivo' ? 'selected' : ''}>Inactivo</option>
+              </select>
+            </label>
+          </div>
+        </details>
+
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" id="cancel-form">Cancelar</button>
           <button type="submit" class="btn btn-primary">Guardar</button>
@@ -120,6 +126,36 @@ async function render(container) {
       </form>
     `);
     document.getElementById('cancel-form').addEventListener('click', closeModal);
+
+    // La marca se deduce del nombre: al escribir "Prodin Car Kool Verde" se llena "Prodin"
+    // sola, sin tener que repetirla. Si el usuario la escribe a mano, se respeta.
+    const form = document.getElementById('prod-form');
+    const hint = document.getElementById('marca-hint');
+    let marcaEditadaAMano = !!item?.marca;
+
+    // Compara por palabras completas: "Prodin Car Kool" reconoce "Prodin",
+    // pero "Prodinex" no. Los signos se tratan como espacios.
+    const normalizar = (s) => ` ${String(s).toLowerCase().replace(/[^a-záéíóúñ0-9]+/gi, ' ').trim()} `;
+
+    function marcaEnElNombre(nombre) {
+      const n = normalizar(nombre);
+      // Gana la marca más larga que aparezca, para que "Auto Coolant" le gane a "Auto".
+      return brands
+        .filter((b) => b.nombre && n.includes(normalizar(b.nombre)))
+        .sort((a, b) => b.nombre.length - a.nombre.length)[0]?.nombre || '';
+    }
+
+    form.marca.addEventListener('input', () => {
+      marcaEditadaAMano = true;
+      hint.textContent = '';
+    });
+
+    form.nombre.addEventListener('input', () => {
+      if (marcaEditadaAMano) return;
+      const detectada = marcaEnElNombre(form.nombre.value);
+      form.marca.value = detectada;
+      hint.textContent = detectada ? `✓ Marca detectada del nombre: ${detectada}` : '';
+    });
     document.getElementById('prod-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
