@@ -85,7 +85,7 @@ async function render(container) {
         <label>Precio (Q) <input type="number" id="v-precio" min="0" step="0.01"></label>
         <label>Descuento (Q) <input type="number" id="v-descuento" min="0" step="0.01" value="0"></label>
       </div>
-      <button type="button" class="btn btn-secondary" id="v-add">+ Agregar a la venta</button>
+      <button type="button" class="btn btn-primary btn-block" id="v-add">+ Agregar a la venta</button>
       <div id="v-cart-list" class="text-muted mt-16">Sin productos agregados.</div>
 
       <div class="section-title">Totales</div>
@@ -124,17 +124,22 @@ async function render(container) {
       }));
     }
 
-    const buscador = prodSearch.mount({ onSelect: (p) => { $('v-precio').value = p.precioVenta; } });
+    const buscador = prodSearch.mount({ onSelect: (p) => { $('v-precio').value = p.precioVenta; renderCart(); } });
 
     function renderCart() {
       const list = $('v-cart-list');
-      list.innerHTML = cart.length ? cart.map((i, idx) => `
+      const lineas = cart.length ? cart.map((i, idx) => `
         <div class="cart-line">
           <span style="flex:1">${escapeHtml(i.nombre)}</span>
           <span>${i.cantidad} x ${formatQ(i.precio)}${i.descuento ? ` − ${formatQ(i.descuento)}` : ''}</span>
           <b style="width:90px;text-align:right">${formatQ(i.subtotal)}</b>
           <button type="button" class="btn btn-danger btn-sm" data-rm="${idx}">✕</button>
         </div>`).join('') : '<span class="text-muted">Sin productos agregados.</span>';
+      // Aviso cuando se eligió un producto pero todavía no se agregó a la venta.
+      const pendiente = buscador?.getSelected?.();
+      list.innerHTML = lineas + (pendiente
+        ? `<div class="pending-notice">⚠ <b>${escapeHtml(pendiente.nombre)}</b> todavía NO está en la venta. Presiona “+ Agregar a la venta”.</div>`
+        : '');
       list.querySelectorAll('[data-rm]').forEach((btn) => btn.addEventListener('click', () => {
         cart.splice(Number(btn.dataset.rm), 1); renderCart();
       }));
@@ -152,7 +157,11 @@ async function render(container) {
       $('v-totales').innerHTML = `<b>Total: ${formatQ(total)}</b>`;
       if ($('v-pago').value === 'efectivo') {
         const recibido = Number($('v-recibido').value) || 0;
-        $('v-vuelto').value = formatQ(Math.max(0, round2(recibido - total)));
+        // Sin productos en la venta no hay vuelto que entregar: mostrar el monto
+        // recibido completo como "vuelto" haría que se entregue dinero de más.
+        $('v-vuelto').value = cart.length
+          ? formatQ(Math.max(0, round2(recibido - total)))
+          : 'Agrega productos primero';
       }
       return { subtotal, iva, total };
     }
@@ -175,6 +184,13 @@ async function render(container) {
       $('v-cantidad').value = 1;
       $('v-descuento').value = 0;
       renderCart();
+    });
+
+    // Enter en cantidad/precio/descuento agrega el producto (más rápido en mostrador).
+    ['v-cantidad', 'v-precio', 'v-descuento'].forEach((id) => {
+      $(id).addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); $('v-add').click(); }
+      });
     });
 
     $('v-recibido').addEventListener('input', updateTotals);

@@ -138,3 +138,6 @@ tbody tr:hover{background:var(--bg)}
 .prod-search-item:hover{background:var(--bg)}
 .prod-search-item.is-empty{cursor:default}
 .prod-search-item.is-empty:hover{background:none}
+
+/* Aviso: producto elegido en el buscador pero aún no agregado a la venta/orden */
+.pending-notice{margin-top:10px;padding:10px 12px;border:1px solid var(--danger);background:var(--danger-light);color:var(--danger);border-radius:8px;font-size:13px;font-weight:600}

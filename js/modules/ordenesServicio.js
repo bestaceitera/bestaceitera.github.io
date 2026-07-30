@@ -104,7 +104,7 @@ async function render(container) {
         ${prodSearch.html}
         <label>Cantidad <input type="number" id="os-cantidad" min="1" step="1" value="1"></label>
       </div>
-      <button type="button" class="btn btn-secondary" id="os-add-prod">+ Agregar producto</button>
+      <button type="button" class="btn btn-primary btn-block" id="os-add-prod">+ Agregar producto</button>
       <div id="os-cart-list" class="text-muted mt-16">Sin productos agregados.</div>
 
       <div class="section-title">Costos</div>
@@ -160,13 +160,18 @@ async function render(container) {
 
     function renderCart() {
       const list = $('os-cart-list');
-      list.innerHTML = productCart.length ? productCart.map((i, idx) => `
+      const lineas = productCart.length ? productCart.map((i, idx) => `
         <div class="cart-line">
           <span style="flex:1">${escapeHtml(i.nombre)}</span>
           <span>${i.cantidad} x ${formatQ(i.precio)}</span>
           <b style="width:90px;text-align:right">${formatQ(i.subtotal)}</b>
           <button type="button" class="btn btn-danger btn-sm" data-rm="${idx}">✕</button>
         </div>`).join('') : '<span class="text-muted">Sin productos agregados.</span>';
+      // Aviso cuando se eligió un producto pero todavía no se agregó a la orden.
+      const pendiente = buscador?.getSelected?.();
+      list.innerHTML = lineas + (pendiente
+        ? `<div class="pending-notice">⚠ <b>${escapeHtml(pendiente.nombre)}</b> todavía NO está en la orden. Presiona “+ Agregar producto”.</div>`
+        : '');
       list.querySelectorAll('[data-rm]').forEach((btn) => btn.addEventListener('click', () => {
         productCart.splice(Number(btn.dataset.rm), 1); renderCart(); updateTotal();
       }));
@@ -180,12 +185,20 @@ async function render(container) {
       $('os-total').textContent = `Total: ${formatQ(total)}`;
       if ($('os-pago').value === 'efectivo') {
         const recibido = Number($('os-recibido').value) || 0;
-        $('os-vuelto').value = formatQ(Math.max(0, round2(recibido - total)));
+        // Con total en cero no hay vuelto que entregar (evita mostrar el monto
+        // recibido completo como si fuera cambio para el cliente).
+        $('os-vuelto').value = total > 0
+          ? formatQ(Math.max(0, round2(recibido - total)))
+          : 'Falta cobrar el servicio';
       }
       return { costoProductos, manoObra, total };
     }
 
-    const buscador = prodSearch.mount();
+    const buscador = prodSearch.mount({ onSelect: () => renderCart() });
+
+    $('os-cantidad').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); $('os-add-prod').click(); }
+    });
 
     $('os-add-prod').addEventListener('click', () => {
       if (!activeProducts.length) { toast('No hay productos en el catálogo para agregar.', 'danger'); return; }
