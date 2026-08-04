@@ -1,4 +1,5 @@
-import { setPageTitle, toast } from './ui.js';
+import { setPageTitle, toast, modalAbierto } from './ui.js';
+import { listen } from './data.js';
 
 const routes = new Map();
 const sections = [];
@@ -33,7 +34,60 @@ function highlightActive(hash) {
   });
 }
 
-async function renderRoute() {
+/* ---------------- Sincronización en vivo entre dispositivos ----------------
+ * Cada pantalla se queda escuchando las colecciones que le interesan, así que
+ * si el empleado registra una venta en el mostrador, la pantalla del admin se
+ * actualiza sola, sin tener que recargar ni volver a entrar a la sección.
+ */
+const COLECCIONES_POR_RUTA = {
+  dashboard: ['sales', 'serviceOrders', 'cashMovements', 'deposits', 'products'],
+  ventas: ['sales'],
+  'ordenes-servicio': ['serviceOrders'],
+  clientes: ['customers'],
+  caja: ['cashMovements', 'cashClosings', 'cashReturns'],
+  depositos: ['deposits'],
+  inventario: ['inventoryMovements', 'products'],
+  productos: ['products'],
+};
+
+let unsubs = [];
+let rutaActual = null;
+let refrescoPendiente = false;
+let temporizador = null;
+
+function detenerEscuchas() {
+  unsubs.forEach((u) => { try { u(); } catch { /* ya estaba cerrada */ } });
+  unsubs = [];
+}
+
+function programarRefresco() {
+  clearTimeout(temporizador);
+  // Pequeña espera para agrupar varios cambios seguidos en un solo refresco.
+  temporizador = setTimeout(() => renderRoute({ silencioso: true }), 500);
+}
+
+function escucharCambios(hash) {
+  detenerEscuchas();
+  const cols = COLECCIONES_POR_RUTA[hash];
+  if (!cols) return;
+  for (const nombre of cols) {
+    let esPrimera = true;
+    unsubs.push(listen(nombre, () => {
+      // La primera respuesta trae el estado actual, no es un cambio nuevo.
+      if (esPrimera) { esPrimera = false; return; }
+      if (hash !== rutaActual) return;
+      // Nunca refrescar encima de un formulario abierto: se perdería lo escrito.
+      if (modalAbierto()) { refrescoPendiente = true; return; }
+      programarRefresco();
+    }));
+  }
+}
+
+document.addEventListener('modal:closed', () => {
+  if (refrescoPendiente) { refrescoPendiente = false; programarRefresco(); }
+});
+
+async function renderRoute({ silencioso = false } = {}) {
   const hash = (location.hash || '#dashboard').slice(1);
   const route = routes.get(hash) || routes.get('dashboard');
   if (!route.roles.includes(currentProfile.role)) {
@@ -44,7 +98,12 @@ async function renderRoute() {
   setPageTitle(route.label);
   highlightActive(route.hash);
   const container = document.getElementById('main-content');
-  container.innerHTML = '<div class="empty-state">Cargando…</div>';
+  // En un refresco automático no se muestra "Cargando…" para que no parpadee.
+  if (!silencioso) container.innerHTML = '<div class="empty-state">Cargando…</div>';
+  if (rutaActual !== route.hash) {
+    rutaActual = route.hash;
+    escucharCambios(route.hash);
+  }
   try {
     await route.render(container, currentProfile);
   } catch (err) {
@@ -57,7 +116,7 @@ async function renderRoute() {
 export function initRouter(profile) {
   currentProfile = profile;
   buildSidebar(profile);
-  window.addEventListener('hashchange', renderRoute);
+  window.addEventListener('hashchange', () => renderRoute());
   renderRoute();
 }
 

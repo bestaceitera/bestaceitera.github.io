@@ -25,6 +25,13 @@ export function closeModal() {
   document.getElementById('modal-body').innerHTML = '';
   if (modalCloseCallback) modalCloseCallback();
   modalCloseCallback = null;
+  // Avisa al router para que aplique los cambios que llegaron de otro dispositivo
+  // mientras había un formulario abierto (no se refresca encima del formulario).
+  document.dispatchEvent(new CustomEvent('modal:closed'));
+}
+
+export function modalAbierto() {
+  return !document.getElementById('modal-backdrop').hidden;
 }
 
 // ui.js se importa desde app.js, un módulo cargado de forma diferida, así que el
