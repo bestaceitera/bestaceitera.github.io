@@ -152,3 +152,5 @@ tbody tr:hover{background:var(--bg)}
 .mas-detalles{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px}
 .mas-detalles summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--primary)}
 .mas-detalles[open] summary{margin-bottom:4px}
+.libre-box{border:1px solid var(--primary);background:var(--primary-light);border-radius:8px;padding:12px;margin-top:10px}
+.libre-box .form-row{margin-bottom:10px}

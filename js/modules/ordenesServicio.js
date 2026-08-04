@@ -44,7 +44,7 @@ async function render(container) {
       <ul>${(o.servicios || []).map((s) => `<li>${escapeHtml(s.nombre)} — ${formatQ(s.precio)}</li>`).join('') || '<li class="text-muted">Ninguno</li>'}</ul>
       <div class="section-title">Productos utilizados</div>
       ${o.productos?.length ? `<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
-        <tbody>${o.productos.map((p) => `<tr><td>${escapeHtml(p.nombre)}</td><td>${p.cantidad}</td><td>${formatQ(p.precio)}</td><td>${formatQ(p.subtotal)}</td></tr>`).join('')}</tbody></table></div>`
+        <tbody>${o.productos.map((p) => `<tr><td>${escapeHtml(p.nombre)}${p.libre ? ' <span class="badge badge-info">suelto</span>' : ''}</td><td>${p.cantidad}</td><td>${formatQ(p.precio)}</td><td>${formatQ(p.subtotal)}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="text-muted">Ninguno</p>'}
       ${o.observaciones ? `<p class="mt-16"><b>Observaciones:</b> ${escapeHtml(o.observaciones)}</p>` : ''}
       <p class="mt-16">Servicios: ${formatQ(o.costoServicios ?? 0)} &nbsp; Productos: ${formatQ(o.costoProductos)}${o.costoManoObra ? ` &nbsp; Mano de obra: ${formatQ(o.costoManoObra)}` : ''}</p>
@@ -101,6 +101,20 @@ async function render(container) {
 
       <div class="section-title">Productos utilizados</div>
       ${prodSearch.html}
+      <button type="button" class="btn btn-secondary btn-block mt-16" id="os-libre-toggle">
+        + Agregar algo que no está en la lista (filtro, etc.)
+      </button>
+      <div class="libre-box" id="os-libre" hidden>
+        <div class="form-row">
+          <label>¿Qué usaste?
+            <input id="os-libre-desc" autocomplete="off" placeholder="ej. Filtro de aceite Corolla 2015">
+          </label>
+          <label>Precio (Q)
+            <input type="number" id="os-libre-precio" min="0" step="0.01" placeholder="0.00">
+          </label>
+        </div>
+        <button type="button" class="btn btn-primary btn-block" id="os-libre-add">Agregar a la orden</button>
+      </div>
       <div id="os-cart-list" class="text-muted mt-16">Sin productos agregados.</div>
 
       <label class="mt-16">Mano de obra adicional (Q) — opcional
@@ -163,6 +177,30 @@ async function render(container) {
       },
     });
 
+    // Artículo suelto: se describe y se le pone precio en el momento. No toca
+    // inventario porque no es un producto del catálogo.
+    const panelLibre = $('os-libre');
+    $('os-libre-toggle').addEventListener('click', () => {
+      panelLibre.hidden = !panelLibre.hidden;
+      if (!panelLibre.hidden) $('os-libre-desc').focus();
+    });
+
+    function agregarLibre() {
+      const desc = $('os-libre-desc').value.trim();
+      const precio = Number($('os-libre-precio').value);
+      if (!desc) { toast('Escribe qué usaste.', 'danger'); $('os-libre-desc').focus(); return; }
+      if (!precio || precio <= 0) { toast('Ponle un precio.', 'danger'); $('os-libre-precio').focus(); return; }
+      productCart.push({ productoId: null, libre: true, nombre: desc, cantidad: 1, precio });
+      $('os-libre-desc').value = '';
+      $('os-libre-precio').value = '';
+      $('os-libre-desc').focus();
+      renderCart();
+    }
+    $('os-libre-add').addEventListener('click', agregarLibre);
+    ['os-libre-desc', 'os-libre-precio'].forEach((id) => {
+      $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); agregarLibre(); } });
+    });
+
     function renderCart() {
       const list = $('os-cart-list');
       if (!productCart.length) {
@@ -172,7 +210,7 @@ async function render(container) {
       }
       list.innerHTML = productCart.map((i, idx) => `
         <div class="cart-line">
-          <span class="cart-name">${escapeHtml(i.nombre)}</span>
+          <span class="cart-name">${escapeHtml(i.nombre)}${i.libre ? ' <span class="badge badge-info">suelto</span>' : ''}</span>
           <span class="cart-qty">
             <button type="button" class="btn btn-secondary btn-sm" data-dec="${idx}">−</button>
             <input type="number" min="1" step="1" value="${i.cantidad}" data-qty="${idx}">
@@ -186,7 +224,8 @@ async function render(container) {
       const setQty = (idx, valor) => {
         const item = productCart[idx];
         const n = Math.max(1, Math.floor(Number(valor) || 1));
-        if (n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
+        // Los artículos sueltos no tienen stock que controlar.
+        if (!item.libre && n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
         else item.cantidad = n;
         renderCart();
       };
@@ -259,7 +298,7 @@ async function render(container) {
           vehiculo: { marca: $('os-v-marca').value.trim(), modelo: $('os-v-modelo').value.trim(), anio: $('os-v-anio').value, placa: $('os-v-placa').value.trim().toUpperCase() },
           servicios: selectedServicios(),
           productos: productCart.map((i) => ({
-            productoId: i.productoId, nombre: i.nombre, cantidad: i.cantidad,
+            productoId: i.productoId ?? null, libre: !!i.libre, nombre: i.nombre, cantidad: i.cantidad,
             precio: i.precio, subtotal: round2(i.cantidad * i.precio),
           })),
           empleados: empleadosOrden,
@@ -272,7 +311,8 @@ async function render(container) {
           montoRecibido: (formaPago === 'efectivo' || formaPago === 'mixto') ? recibido : total,
           vuelto,
         });
-        for (const item of productCart) {
+        // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.
+        for (const item of productCart.filter((i) => i.productoId)) {
           await applyStockChange(item.productoId, -item.cantidad, { motivo: 'servicio', referenciaId: orderId, usuario: currentUser });
         }
         // Solo el efectivo físico recibido entra al arqueo de caja (tarjeta/transferencia no).

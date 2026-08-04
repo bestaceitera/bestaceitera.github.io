@@ -40,7 +40,7 @@ async function render(container) {
       <p><b>Cliente:</b> ${escapeHtml(s.clienteNombre)} &nbsp; <b>Fecha:</b> ${escapeHtml(s.fecha)} &nbsp; <b>Usuario:</b> ${escapeHtml(s.usuarioNombre)}</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
-        <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
+        <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}${i.libre ? ' <span class="badge badge-info">suelto</span>' : ''}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
       </table></div>
       <p class="mt-16 text-right">${s.iva > 0 ? `IVA (12%): ${formatQ(s.iva)}<br>` : ''}${s.descuentoTotal > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>Descuento: −${formatQ(s.descuentoTotal)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
       <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
@@ -54,8 +54,8 @@ async function render(container) {
       getAll('customers', { order: 'nombre' }),
       getAll('users', { order: 'nombre' }),
     ]);
+    // Aunque no haya productos en el catálogo se puede vender: existen los artículos sueltos.
     const activeProducts = products.filter((p) => p.estado !== 'inactivo');
-    if (!activeProducts.length) { toast('No hay productos activos para vender.', 'danger'); return; }
     const activeUsers = users.filter((u) => u.activo !== false);
     const user = getCurrentUser();
     const cart = [];
@@ -78,6 +78,20 @@ async function render(container) {
 
       <div class="section-title">Productos</div>
       ${prodSearch.html}
+      <button type="button" class="btn btn-secondary btn-block mt-16" id="v-libre-toggle">
+        + Vender algo que no está en la lista (filtro, etc.)
+      </button>
+      <div class="libre-box" id="v-libre" hidden>
+        <div class="form-row">
+          <label>¿Qué vendiste?
+            <input id="v-libre-desc" autocomplete="off" placeholder="ej. Filtro de aceite Corolla 2015">
+          </label>
+          <label>Precio (Q)
+            <input type="number" id="v-libre-precio" min="0" step="0.01" placeholder="0.00">
+          </label>
+        </div>
+        <button type="button" class="btn btn-primary btn-block" id="v-libre-add">Agregar a la venta</button>
+      </div>
       <div id="v-cart-list" class="text-muted mt-16">Sin productos agregados.</div>
 
       <div class="form-row mt-16">
@@ -133,6 +147,30 @@ async function render(container) {
       },
     });
 
+    // Artículo suelto: se describe y se le pone precio en el momento, sin registrarlo
+    // en el catálogo. No toca inventario porque no es un producto con stock.
+    const panelLibre = $('v-libre');
+    $('v-libre-toggle').addEventListener('click', () => {
+      panelLibre.hidden = !panelLibre.hidden;
+      if (!panelLibre.hidden) $('v-libre-desc').focus();
+    });
+
+    function agregarLibre() {
+      const desc = $('v-libre-desc').value.trim();
+      const precio = Number($('v-libre-precio').value);
+      if (!desc) { toast('Escribe qué vendiste.', 'danger'); $('v-libre-desc').focus(); return; }
+      if (!precio || precio <= 0) { toast('Ponle un precio.', 'danger'); $('v-libre-precio').focus(); return; }
+      cart.push({ productoId: null, libre: true, nombre: desc, cantidad: 1, precio, descuento: 0 });
+      $('v-libre-desc').value = '';
+      $('v-libre-precio').value = '';
+      $('v-libre-desc').focus();
+      renderCart();
+    }
+    $('v-libre-add').addEventListener('click', agregarLibre);
+    ['v-libre-desc', 'v-libre-precio'].forEach((id) => {
+      $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); agregarLibre(); } });
+    });
+
     function renderCart() {
       const list = $('v-cart-list');
       if (!cart.length) {
@@ -142,7 +180,7 @@ async function render(container) {
       }
       list.innerHTML = cart.map((i, idx) => `
         <div class="cart-line">
-          <span class="cart-name">${escapeHtml(i.nombre)}</span>
+          <span class="cart-name">${escapeHtml(i.nombre)}${i.libre ? ' <span class="badge badge-info">suelto</span>' : ''}</span>
           <span class="cart-qty">
             <button type="button" class="btn btn-secondary btn-sm" data-dec="${idx}">−</button>
             <input type="number" min="1" step="1" value="${i.cantidad}" data-qty="${idx}">
@@ -156,7 +194,8 @@ async function render(container) {
       const setQty = (idx, valor) => {
         const item = cart[idx];
         const n = Math.max(1, Math.floor(Number(valor) || 1));
-        if (n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
+        // Los artículos sueltos no tienen stock que controlar.
+        if (!item.libre && n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
         else item.cantidad = n;
         renderCart();
       };
@@ -234,14 +273,15 @@ async function render(container) {
           numero, fecha: todayISO(), usuarioId: user.uid, usuarioNombre: user.nombre,
           clienteId, clienteNombre, clienteTipo: clienteId === 'CF' ? 'CF' : 'registrado',
           items: cart.map((i) => ({
-            productoId: i.productoId, nombre: i.nombre, cantidad: i.cantidad,
+            productoId: i.productoId ?? null, libre: !!i.libre, nombre: i.nombre, cantidad: i.cantidad,
             precio: i.precio, descuento: 0, subtotal: round2(i.cantidad * i.precio),
           })),
           subtotal, descuentoTotal: descuento,
           iva, total, formaPago, montoRecibido, vuelto, empleadosComision,
         });
 
-        for (const item of cart) {
+        // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.
+        for (const item of cart.filter((i) => i.productoId)) {
           await applyStockChange(item.productoId, -item.cantidad, { motivo: 'venta', referenciaId: saleId, usuario: user });
         }
 
