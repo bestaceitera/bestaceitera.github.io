@@ -79,7 +79,10 @@ async function render(container) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [products, sales] = await Promise.all([getAll('products', { order: 'nombre' }), getAll('sales')]);
     const soldQty = {};
-    sales.forEach((s) => s.items?.forEach((i) => { soldQty[i.productoId] = (soldQty[i.productoId] || 0) + i.cantidad; }));
+    // Los artículos sueltos no tienen productoId, así que no cuentan en el ranking por producto.
+    sales.forEach((s) => s.items?.forEach((i) => {
+      if (i.productoId) soldQty[i.productoId] = (soldQty[i.productoId] || 0) + i.cantidad;
+    }));
     const ranked = products.map((p) => ({ nombre: p.nombre, vendidos: soldQty[p.id] || 0, stock: p.stock, stockMinimo: p.stockMinimo }))
       .sort((a, b) => b.vendidos - a.vendidos);
     const lowStock = products.filter((p) => Number(p.stock) <= Number(p.stockMinimo ?? 0))

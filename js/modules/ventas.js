@@ -1,4 +1,4 @@
-import { getAll, addRecord, nextFolio } from '../data.js';
+import { getAll, getById, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast, productSearch } from '../ui.js';
@@ -62,12 +62,17 @@ async function render(container) {
     const prodSearch = productSearch(activeProducts, { id: 'v-producto', label: 'Buscar producto', clearOnSelect: true });
 
     openModal('Nueva venta', `
-      <label>Cliente
-        <select id="v-cliente">
-          <option value="CF">Consumidor Final</option>
-          ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`).join('')}
-        </select>
-      </label>
+      <div class="form-row">
+        <label>Cliente
+          <select id="v-cliente">
+            <option value="CF">Consumidor Final</option>
+            ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`).join('')}
+          </select>
+        </label>
+        <label>Fecha de la venta
+          <input type="date" id="v-fecha" value="${todayISO()}" max="${todayISO()}">
+        </label>
+      </div>
 
       <div class="section-title">Empleados que realizaron esta venta</div>
       <div class="tag-list" id="v-empleados">
@@ -264,13 +269,29 @@ async function render(container) {
       const saveBtn = $('v-save');
       saveBtn.disabled = true;
       try {
+        // Se revisa el stock contra la base justo antes de guardar: si otro
+        // dispositivo vendió lo mismo mientras este formulario estaba abierto,
+        // la venta se rechaza entera en vez de dejar el inventario en negativo.
+        for (const item of cart.filter((i) => i.productoId)) {
+          const actual = await getById('products', item.productoId);
+          if (!actual) {
+            toast(`El producto "${item.nombre}" ya no existe. Quítalo de la venta.`, 'danger', 6000);
+            saveBtn.disabled = false; return;
+          }
+          if (Number(actual.stock || 0) < item.cantidad) {
+            toast(`Ya solo quedan ${actual.stock || 0} de "${item.nombre}". Ajusta la cantidad.`, 'danger', 6000);
+            saveBtn.disabled = false; return;
+          }
+        }
+
         const clienteOpt = $('v-cliente').selectedOptions[0];
         const clienteId = clienteOpt.value;
         const clienteNombre = clienteId === 'CF' ? CONSUMIDOR_FINAL.nombre : clienteOpt.dataset.nombre;
         const numero = await nextFolio('sales', { prefix: 'V-', pad: 6 });
+        const fechaVenta = $('v-fecha').value || todayISO();
 
         const saleId = await addRecord('sales', {
-          numero, fecha: todayISO(), usuarioId: user.uid, usuarioNombre: user.nombre,
+          numero, fecha: fechaVenta, usuarioId: user.uid, usuarioNombre: user.nombre,
           clienteId, clienteNombre, clienteTipo: clienteId === 'CF' ? 'CF' : 'registrado',
           items: cart.map((i) => ({
             productoId: i.productoId ?? null, libre: !!i.libre, nombre: i.nombre, cantidad: i.cantidad,
@@ -291,10 +312,10 @@ async function render(container) {
           : formaPago === 'mixto' ? (Number($('v-mixto-efectivo').value) || 0)
           : 0;
         if (efectivoEnCaja > 0) {
-          await addCashMovement({ tipo: 'entrada', categoria: 'venta', monto: efectivoEnCaja, motivo: `Venta ${numero} — ${clienteNombre}`, referenciaId: saleId });
+          await addCashMovement({ tipo: 'entrada', categoria: 'venta', monto: efectivoEnCaja, motivo: `Venta ${numero} — ${clienteNombre}`, referenciaId: saleId, fecha: fechaVenta });
         }
         if (vuelto > 0) {
-          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto venta ${numero}`, referenciaId: saleId });
+          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto venta ${numero}`, referenciaId: saleId, fecha: fechaVenta });
         }
 
         toast(`Venta ${numero} registrada.` + (vuelto > 0 ? ` Vuelto: ${formatQ(vuelto)}` : ''), 'success', 5000);

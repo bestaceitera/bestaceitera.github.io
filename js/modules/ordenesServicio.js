@@ -1,4 +1,4 @@
-import { getAll, addRecord, nextFolio } from '../data.js';
+import { getAll, getById, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast, productSearch } from '../ui.js';
@@ -68,12 +68,17 @@ async function render(container) {
     const prodSearch = productSearch(activeProducts, { id: 'os-producto', label: 'Buscar producto', clearOnSelect: true });
 
     openModal('Nueva orden de servicio', `
-      <label>Cliente
-        <select id="os-cliente">
-          <option value="CF">Consumidor Final</option>
-          ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`).join('')}
-        </select>
-      </label>
+      <div class="form-row">
+        <label>Cliente
+          <select id="os-cliente">
+            <option value="CF">Consumidor Final</option>
+            ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`).join('')}
+          </select>
+        </label>
+        <label>Fecha de la orden
+          <input type="date" id="os-fecha" value="${todayISO()}" max="${todayISO()}">
+        </label>
+      </div>
 
       <div class="section-title">Empleados que realizaron el servicio</div>
       <div class="tag-list" id="os-empleados">
@@ -286,6 +291,19 @@ async function render(container) {
       const saveBtn = $('os-save');
       saveBtn.disabled = true;
       try {
+        // Igual que en ventas: se revalida el stock contra la base antes de guardar.
+        for (const item of productCart.filter((i) => i.productoId)) {
+          const actual = await getById('products', item.productoId);
+          if (!actual) {
+            toast(`El producto "${item.nombre}" ya no existe. Quítalo de la orden.`, 'danger', 6000);
+            saveBtn.disabled = false; return;
+          }
+          if (Number(actual.stock || 0) < item.cantidad) {
+            toast(`Ya solo quedan ${actual.stock || 0} de "${item.nombre}". Ajusta la cantidad.`, 'danger', 6000);
+            saveBtn.disabled = false; return;
+          }
+        }
+
         const clienteOpt = $('os-cliente').selectedOptions[0];
         const clienteId = clienteOpt.value;
         const clienteNombre = clienteId === 'CF' ? CONSUMIDOR_FINAL.nombre : clienteOpt.dataset.nombre;
@@ -293,7 +311,7 @@ async function render(container) {
         const vuelto = (formaPago === 'efectivo' || formaPago === 'mixto') ? Math.max(0, round2(recibido - total)) : 0;
         const orderId = await addRecord('serviceOrders', {
           numero,
-          fecha: todayISO(),
+          fecha: $('os-fecha').value || todayISO(),
           clienteId, clienteNombre,
           vehiculo: { marca: $('os-v-marca').value.trim(), modelo: $('os-v-modelo').value.trim(), anio: $('os-v-anio').value, placa: $('os-v-placa').value.trim().toUpperCase() },
           servicios: selectedServicios(),
@@ -318,10 +336,10 @@ async function render(container) {
         // Solo el efectivo físico recibido entra al arqueo de caja (tarjeta/transferencia no).
         const efectivoEnCaja = formaPago === 'efectivo' ? recibido : formaPago === 'mixto' ? efectivoMixto : 0;
         if (efectivoEnCaja > 0) {
-          await addCashMovement({ tipo: 'entrada', categoria: 'servicio', monto: efectivoEnCaja, motivo: `Orden ${numero} — ${clienteNombre}`, referenciaId: orderId });
+          await addCashMovement({ tipo: 'entrada', categoria: 'servicio', monto: efectivoEnCaja, motivo: `Orden ${numero} — ${clienteNombre}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO() });
         }
         if (vuelto > 0) {
-          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto orden ${numero}`, referenciaId: orderId });
+          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto orden ${numero}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO() });
         }
         toast('Orden de servicio guardada.', 'success');
         closeModal();

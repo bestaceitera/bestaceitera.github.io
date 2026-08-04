@@ -7,7 +7,7 @@ import { getCurrentUser } from '../auth.js';
  * tipo: 'entrada' | 'salida'
  * categoria: 'venta' | 'servicio' | 'abono' | 'otro_ingreso' | 'compra' | 'gasto' | 'devolucion' | 'retiro' | 'deposito' | 'fondo_inicial' | 'vuelto'
  */
-export async function addCashMovement({ tipo, categoria, monto, motivo, referenciaId = null }) {
+export async function addCashMovement({ tipo, categoria, monto, motivo, referenciaId = null, fecha = null }) {
   const user = getCurrentUser();
   return addRecord('cashMovements', {
     tipo,
@@ -17,7 +17,8 @@ export async function addCashMovement({ tipo, categoria, monto, motivo, referenc
     referenciaId,
     usuarioId: user?.uid || null,
     usuarioNombre: user?.nombre || user?.username || 'Sistema',
-    fecha: todayISO(),
+    // `fecha` permite registrar una venta de un día anterior sin descuadrar el arqueo de ese día.
+    fecha: fecha || todayISO(),
     hora: nowTimeHM(),
   });
 }
