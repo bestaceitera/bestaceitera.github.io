@@ -11,8 +11,10 @@ const CATEGORIA_LABEL = {
 };
 
 async function getTodayMovements() {
-  const all = await getAll('cashMovements', { order: 'createdAt', direction: 'desc' });
-  return all.filter((m) => m.fecha === todayISO());
+  // Se piden SOLO los de hoy a la base (antes se traían todos y se filtraban aquí,
+  // lo que con los años significaría descargar miles de registros cada vez).
+  const hoy = await getAll('cashMovements', { filters: [['fecha', '==', todayISO()]] });
+  return hoy.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 }
 
 /**
@@ -21,7 +23,10 @@ async function getTodayMovements() {
  * que al ser compartida diría siempre lo mismo).
  */
 async function crearResolverResponsable() {
-  const [sales, orders] = await Promise.all([getAll('sales'), getAll('serviceOrders')]);
+  const [sales, orders] = await Promise.all([
+    getAll('sales', { order: 'createdAt', direction: 'desc', max: 400 }),
+    getAll('serviceOrders', { order: 'createdAt', direction: 'desc', max: 400 }),
+  ]);
   const porReferencia = new Map();
   sales.forEach((s) => {
     const n = (s.empleadosComision || []).map((e) => e.empleadoNombre).filter(Boolean).join(', ');
@@ -153,7 +158,7 @@ async function render(container) {
   // ---------------- Cuadre diario ----------------
   async function renderCuadre(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [movements, closings] = await Promise.all([getTodayMovements(), getAll('cashClosings', { order: 'createdAt', direction: 'desc' })]);
+    const [movements, closings] = await Promise.all([getTodayMovements(), getAll('cashClosings', { order: 'createdAt', direction: 'desc', max: 200 })]);
     const stats = computeExpected(movements);
     const todayClosing = closings.find((c) => c.fecha === todayISO());
 
@@ -235,7 +240,7 @@ async function render(container) {
   // ---------------- Devoluciones a caja ----------------
   async function renderDevoluciones(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const returns = await getAll('cashReturns', { order: 'createdAt', direction: 'desc' });
+    const returns = await getAll('cashReturns', { order: 'createdAt', direction: 'desc', max: 200 });
     const pendientes = returns.filter((r) => r.estado === 'pendiente');
 
     el.innerHTML = `
@@ -316,7 +321,7 @@ async function render(container) {
   async function renderHistorial(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [movements, responsableDe] = await Promise.all([
-      getAll('cashMovements', { order: 'createdAt', direction: 'desc' }),
+      getAll('cashMovements', { order: 'createdAt', direction: 'desc', max: 500 }),
       crearResolverResponsable(),
     ]);
     const table = renderTable({

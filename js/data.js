@@ -11,10 +11,16 @@ export function col(name) {
   return collection(db, name);
 }
 
-export async function getAll(name, { order, direction = 'asc', filters = [] } = {}) {
+/**
+ * `max` limita cuántos documentos se traen. Es importante para que el sistema
+ * siga siendo rápido y barato dentro del plan gratuito cuando, con los años,
+ * haya miles de ventas y movimientos guardados.
+ */
+export async function getAll(name, { order, direction = 'asc', filters = [], max } = {}) {
   let q = col(name);
   const clauses = filters.map((f) => where(f[0], f[1], f[2]));
   if (order) clauses.push(orderBy(order, direction));
+  if (max) clauses.push(fsApi.limit(max));
   if (clauses.length) q = query(col(name), ...clauses);
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -44,9 +50,10 @@ export async function removeRecord(name, id) {
   await deleteDoc(doc(db, name, id));
 }
 
-export function listen(name, callback, { order, direction = 'asc', filters = [] } = {}) {
+export function listen(name, callback, { order, direction = 'asc', filters = [], max } = {}) {
   const clauses = filters.map((f) => where(f[0], f[1], f[2]));
   if (order) clauses.push(orderBy(order, direction));
+  if (max) clauses.push(fsApi.limit(max));
   const q = clauses.length ? query(col(name), ...clauses) : col(name);
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));

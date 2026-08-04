@@ -66,12 +66,19 @@ function programarRefresco() {
   temporizador = setTimeout(() => renderRoute({ silencioso: true }), 500);
 }
 
+// Para detectar que ALGUIEN agregó algo basta con vigilar el registro más nuevo:
+// así cada pantalla escucha con 1 solo documento en vez de la colección entera.
+const SOLO_EL_MAS_NUEVO = new Set(['sales', 'serviceOrders', 'cashMovements', 'deposits', 'inventoryMovements', 'customers', 'cashClosings', 'cashReturns']);
+
 function escucharCambios(hash) {
   detenerEscuchas();
   const cols = COLECCIONES_POR_RUTA[hash];
   if (!cols) return;
   for (const nombre of cols) {
     let esPrimera = true;
+    const opciones = SOLO_EL_MAS_NUEVO.has(nombre)
+      ? { order: 'createdAt', direction: 'desc', max: 1 }
+      : {}; // products cambia por edición, no solo por altas: hay que mirarlo completo
     unsubs.push(listen(nombre, () => {
       // La primera respuesta trae el estado actual, no es un cambio nuevo.
       if (esPrimera) { esPrimera = false; return; }
@@ -79,7 +86,7 @@ function escucharCambios(hash) {
       // Nunca refrescar encima de un formulario abierto: se perdería lo escrito.
       if (modalAbierto()) { refrescoPendiente = true; return; }
       programarRefresco();
-    }));
+    }, opciones));
   }
 }
 

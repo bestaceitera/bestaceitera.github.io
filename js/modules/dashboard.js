@@ -19,12 +19,18 @@ async function render(container, profile) {
   container.innerHTML = '<div class="empty-state">Cargando…</div>';
   const isAdmin = profile.role === 'admin';
 
+  // El dashboard solo necesita los últimos 6 meses (es lo que grafica) y la caja de
+  // hoy. Pedir el historial completo lo volvería lentísimo con los años.
+  const desde = new Date();
+  desde.setMonth(desde.getMonth() - 5);
+  const desdeISO = `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, '0')}-01`;
+
   const [sales, serviceOrders, products, cashMovementsToday, deposits] = await Promise.all([
-    getAll('sales'),
-    getAll('serviceOrders'),
+    getAll('sales', { filters: [['fecha', '>=', desdeISO]] }),
+    getAll('serviceOrders', { filters: [['fecha', '>=', desdeISO]] }),
     getAll('products'),
-    getAll('cashMovements', { order: 'createdAt', direction: 'desc' }),
-    getAll('deposits', { order: 'createdAt', direction: 'desc' }),
+    getAll('cashMovements', { filters: [['fecha', '==', todayISO()]] }),
+    getAll('deposits', { order: 'createdAt', direction: 'desc', max: 5 }),
   ]);
   const purchases = isAdmin ? await getAll('purchases') : [];
   const customers = isAdmin ? await getAll('customers') : [];

@@ -7,7 +7,7 @@ import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
 
 async function render(container) {
-  const sales = await getAll('sales', { order: 'createdAt', direction: 'desc' });
+  const sales = await getAll('sales', { order: 'createdAt', direction: 'desc', max: 300 });
 
   const table = renderTable({
     columns: [

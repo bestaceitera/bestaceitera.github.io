@@ -5,7 +5,7 @@ import { escapeHtml, formatQ, compressImageForFirestore, todayISO, nowTimeHM } f
 import { getCurrentUser } from '../auth.js';
 
 async function render(container) {
-  const deposits = await getAll('deposits', { order: 'createdAt', direction: 'desc' });
+  const deposits = await getAll('deposits', { order: 'createdAt', direction: 'desc', max: 200 });
 
   const table = renderTable({
     columns: [

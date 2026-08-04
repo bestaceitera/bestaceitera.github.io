@@ -7,7 +7,7 @@ import { getCurrentUser } from '../auth.js';
 async function render(container) {
   const [products, movements] = await Promise.all([
     getAll('products', { order: 'nombre' }),
-    getAll('inventoryMovements', { order: 'createdAt', direction: 'desc' }),
+    getAll('inventoryMovements', { order: 'createdAt', direction: 'desc', max: 400 }),
   ]);
 
   const lowStock = products.filter((p) => Number(p.stock) <= Number(p.stockMinimo ?? 0));
