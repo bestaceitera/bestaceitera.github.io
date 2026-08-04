@@ -242,58 +242,133 @@ async function render(container) {
     bindExportButtons(depositsContainer.closest('.card'), { title: 'Depósitos bancarios', columns: depositCols, getRows: () => depositRows, filename: 'depositos_bancarios' });
   }
 
-  // ---------------- Comisiones (solo administrador) ----------------
-  // La comisión de cada empleado en una venta/servicio es: (su % propio × total) ÷ cantidad
-  // de empleados asignados a esa misma venta/servicio (si trabajan varios en lo mismo, se
-  // reparte entre ellos en vez de que cada uno cobre el 100% de su porcentaje por separado).
+  // ---------------- Cierre del período: ventas por empleado y comisiones ----------------
+  // La comisión NO se calcula venta por venta: primero se acumula cuánto vendió cada
+  // empleado en todo el período y al final se le aplica su porcentaje a ese total.
+  // Cuando una venta la hacen varios, se reparte entre ellos, de modo que la suma del
+  // desglose por empleado da exactamente el total vendido del negocio.
+  /** Reparte un monto entre n personas sin perder ni un centavo por redondeo. */
+  function repartir(total, n) {
+    const base = Math.floor((total * 100) / n) / 100;
+    const partes = new Array(n).fill(base);
+    partes[0] = round2(partes[0] + round2(total - base * n));
+    return partes;
+  }
+
   async function renderComisiones(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [sales, orders] = await Promise.all([getAll('sales'), getAll('serviceOrders')]);
+    const [sales, orders, invMovs] = await Promise.all([
+      getAll('sales'), getAll('serviceOrders'), getAll('inventoryMovements'),
+    ]);
     let range = applyRangePreset('mes');
 
     function draw() {
-      const agg = {}; // nombre -> { nombre, ventas: [...], servicios: [...], comision }
-      function addTo(nombre, tipo, detalle) {
-        agg[nombre] = agg[nombre] || { nombre, ventas: [], servicios: [], comision: 0 };
-        agg[nombre][tipo].push(detalle);
-        agg[nombre].comision = round2(agg[nombre].comision + detalle.comision);
+      const enRango = (f) => f && f >= range.from && f <= range.to;
+      const agg = {}; // nombre -> { nombre, ventas, servicios, totalVendido, porPct }
+
+      function acumular(nombre, tipo, detalle, monto, pct) {
+        const a = agg[nombre] = agg[nombre] || { nombre, ventas: [], servicios: [], totalVendido: 0, porPct: {} };
+        a[tipo].push(detalle);
+        a.totalVendido = round2(a.totalVendido + monto);
+        a.porPct[pct] = round2((a.porPct[pct] || 0) + monto);
       }
-      sales.filter((s) => s.fecha >= range.from && s.fecha <= range.to).forEach((s) => {
+
+      const ventasPeriodo = sales.filter((s) => enRango(s.fecha));
+      const ordenesPeriodo = orders.filter((o) => enRango(o.fecha));
+      const totalVentas = round2(ventasPeriodo.reduce((s, v) => s + v.total, 0));
+      const totalServicios = round2(ordenesPeriodo.reduce((s, o) => s + o.total, 0));
+      const totalNegocio = round2(totalVentas + totalServicios);
+
+      ventasPeriodo.forEach((s) => {
         const emps = s.empleadosComision || [];
-        emps.forEach((e) => {
-          const comision = round2((s.total * (e.comisionPct || 0) / 100) / emps.length);
-          addTo(e.empleadoNombre, 'ventas', { numero: s.numero, fecha: s.fecha, total: s.total, comision });
-        });
+        if (!emps.length) return;
+        const partes = repartir(s.total, emps.length);
+        emps.forEach((e, i) => acumular(e.empleadoNombre, 'ventas',
+          { numero: s.numero, fecha: s.fecha, total: s.total, parte: partes[i], compartida: emps.length },
+          partes[i], Number(e.comisionPct) || 0));
       });
-      orders.filter((o) => o.fecha >= range.from && o.fecha <= range.to).forEach((o) => {
+      ordenesPeriodo.forEach((o) => {
         const emps = o.empleados || [];
-        emps.forEach((e) => {
-          const comision = round2((o.total * (e.comisionPct || 0) / 100) / emps.length);
-          addTo(e.empleadoNombre, 'servicios', { numero: o.numero, fecha: o.fecha, total: o.total, comision });
-        });
+        if (!emps.length) return;
+        const partes = repartir(o.total, emps.length);
+        emps.forEach((e, i) => acumular(e.empleadoNombre, 'servicios',
+          { numero: o.numero, fecha: o.fecha, total: o.total, parte: partes[i], compartida: emps.length },
+          partes[i], Number(e.comisionPct) || 0));
       });
-      const sorted = Object.values(agg).sort((a, b) => b.comision - a.comision);
+
+      // La comisión se aplica al TOTAL acumulado del período, no a cada venta.
+      Object.values(agg).forEach((a) => {
+        a.comision = round2(Object.entries(a.porPct).reduce((s, [pct, monto]) => s + (monto * Number(pct)) / 100, 0));
+        const pcts = Object.keys(a.porPct).map(Number);
+        a.pctLabel = pcts.length === 1 ? `${pcts[0]}%` : 'varios %';
+      });
+
+      const sorted = Object.values(agg).sort((a, b) => b.totalVendido - a.totalVendido);
+      const sumaDesglose = round2(sorted.reduce((s, r) => s + r.totalVendido, 0));
+      const sinAsignar = round2(totalNegocio - sumaDesglose);
       const totalComisiones = round2(sorted.reduce((s, r) => s + r.comision, 0));
-      const rows = sorted.map((r) => ({ nombre: r.nombre, ventas: r.ventas.length, servicios: r.servicios.length, comision: formatQ(r.comision) }));
+
+      // Productos que salieron para uso propio: NO son venta ni generan comisión.
+      const usoPropio = invMovs.filter((m) => m.motivo === 'uso propio' && enRango(m.fecha));
+      const usoPorPersona = {};
+      usoPropio.forEach((m) => {
+        const quien = m.usuarioNombre || 'Sin nombre';
+        usoPorPersona[quien] = usoPorPersona[quien] || { nombre: quien, items: [], unidades: 0 };
+        usoPorPersona[quien].items.push(m);
+        usoPorPersona[quien].unidades += Number(m.cantidad) || 0;
+      });
+
+      const rows = sorted.map((r) => ({
+        nombre: r.nombre,
+        ventas: r.ventas.length,
+        servicios: r.servicios.length,
+        vendido: formatQ(r.totalVendido),
+        pct: r.pctLabel,
+        comision: formatQ(r.comision),
+      }));
       const cols = [
         { key: 'nombre', label: 'Empleado' },
-        { key: 'ventas', label: 'Ventas asignadas' },
-        { key: 'servicios', label: 'Servicios asignados' },
-        { key: 'comision', label: 'Comisión ganada' },
+        { key: 'ventas', label: 'Ventas' },
+        { key: 'servicios', label: 'Servicios' },
+        { key: 'vendido', label: 'Vendió en el período' },
+        { key: 'pct', label: '%' },
+        { key: 'comision', label: 'Comisión a pagar' },
         { key: 'detalle', label: '', format: (r) => `<button class="btn btn-secondary btn-sm" data-emp="${escapeHtml(r.nombre)}">Ver detalle</button>` },
       ];
 
       el.innerHTML = `
         <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
-        <div class="stat-card mt-16" style="max-width:320px"><div class="label">Total comisiones · ${range.from} a ${range.to}</div><div class="value">${formatQ(totalComisiones)}</div></div>
-        <div class="card mt-16"><div id="rep-comisiones-table"></div></div>
+        <p class="text-muted mt-16" style="margin-bottom:8px">Período: <b>${range.from}</b> a <b>${range.to}</b></p>
+        <div class="grid grid-4">
+          <div class="stat-card"><div class="label">Total vendido</div><div class="value">${formatQ(totalNegocio)}</div>
+            <div class="sub">${formatQ(totalVentas)} en ventas · ${formatQ(totalServicios)} en servicios</div></div>
+          <div class="stat-card"><div class="label">Total comisiones a pagar</div><div class="value">${formatQ(totalComisiones)}</div></div>
+          <div class="stat-card"><div class="label">Ventas / órdenes</div><div class="value">${ventasPeriodo.length} / ${ordenesPeriodo.length}</div></div>
+          <div class="stat-card"><div class="label">Productos para uso propio</div><div class="value">${usoPropio.reduce((s, m) => s + (Number(m.cantidad) || 0), 0)}</div><div class="sub">unidades — no es venta</div></div>
+        </div>
+
+        <div class="section-title">Cuánto vendió cada quien</div>
+        <div class="card"><div id="rep-comisiones-table"></div></div>
+        ${sinAsignar > 0.009 ? `<p class="text-muted" style="font-size:12.5px;margin-top:8px">
+            Nota: ${formatQ(sinAsignar)} del total no tiene empleado asignado (ventas registradas antes de exigirlo).</p>` : ''}
+
+        <div class="section-title">Productos para uso propio (no es venta, no genera comisión)</div>
+        <div class="card">
+          ${usoPropio.length ? Object.values(usoPorPersona).map((p) => `
+            <div class="section-title" style="margin-top:0">${escapeHtml(p.nombre)} — ${p.unidades} unidad(es)</div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Nota</th></tr></thead>
+              <tbody>${p.items.map((m) => `<tr><td>${escapeHtml(m.fecha || '')}</td><td>${escapeHtml(m.productoNombre || '')}</td><td>${m.cantidad}</td><td>${escapeHtml(m.nota || '')}</td></tr>`).join('')}</tbody>
+            </table></div>`).join('')
+          : '<div class="empty-state">Sin salidas por uso propio en el período.</div>'}
+        </div>
       `;
-      const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Sin comisiones en el período.' });
+      const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Nadie tiene ventas en el período.' });
       const tableContainer = document.getElementById('rep-comisiones-table');
       tableContainer.innerHTML = t.html;
       t.mount(tableContainer);
       bindExportButtons(el, {
-        title: 'Comisiones por empleado',
+        title: `Ventas y comisiones por empleado (${range.from} a ${range.to})`,
         columns: cols.filter((c) => c.key !== 'detalle'),
         getRows: () => rows,
         filename: 'comisiones',
@@ -306,21 +381,33 @@ async function render(container) {
     }
 
     function showEmployeeDetail(r) {
-      const rowsHtml = (tipo, list) => list.length
-        ? list.map((it) => `<tr><td>${escapeHtml(it.numero)}</td><td>${escapeHtml(it.fecha)}</td><td>${formatQ(it.total)}</td><td>${formatQ(it.comision)}</td></tr>`).join('')
-        : `<tr><td colspan="4" class="table-empty">Sin ${tipo} en el período.</td></tr>`;
-      openModal(`Comisiones — ${r.nombre}`, `
+      const filas = (tipo, list) => list.length
+        ? list.map((it) => `<tr>
+            <td>${escapeHtml(it.numero)}</td><td>${escapeHtml(it.fecha)}</td>
+            <td>${formatQ(it.total)}</td>
+            <td>${it.compartida > 1 ? `<span class="badge badge-info">entre ${it.compartida}</span>` : ''}</td>
+            <td>${formatQ(it.parte)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="5" class="table-empty">Sin ${tipo} en el período.</td></tr>`;
+      const detallePct = Object.entries(r.porPct)
+        .map(([pct, monto]) => `${formatQ(monto)} × ${Number(pct)}% = <b>${formatQ(round2(monto * Number(pct) / 100))}</b>`)
+        .join('<br>');
+      openModal(`${r.nombre} — ventas del período`, `
         <div class="section-title" style="margin-top:0">Ventas</div>
         <div class="table-wrap"><table>
-          <thead><tr><th>No.</th><th>Fecha</th><th>Total venta</th><th>Comisión</th></tr></thead>
-          <tbody>${rowsHtml('ventas', r.ventas)}</tbody>
+          <thead><tr><th>No.</th><th>Fecha</th><th>Total venta</th><th>Compartida</th><th>Le cuenta</th></tr></thead>
+          <tbody>${filas('ventas', r.ventas)}</tbody>
         </table></div>
         <div class="section-title">Servicios</div>
         <div class="table-wrap"><table>
-          <thead><tr><th>No.</th><th>Fecha</th><th>Total orden</th><th>Comisión</th></tr></thead>
-          <tbody>${rowsHtml('servicios', r.servicios)}</tbody>
+          <thead><tr><th>No.</th><th>Fecha</th><th>Total orden</th><th>Compartida</th><th>Le cuenta</th></tr></thead>
+          <tbody>${filas('servicios', r.servicios)}</tbody>
         </table></div>
-        <p class="text-right mt-16"><b>Total comisión: ${formatQ(r.comision)}</b></p>
+        <div class="card mt-16" style="background:var(--primary-light);border-color:var(--primary)">
+          <div><b>Vendió en el período: ${formatQ(r.totalVendido)}</b></div>
+          <div class="mt-16">Comisión sobre ese total:<br>${detallePct}</div>
+          <div class="mt-16" style="font-size:17px"><b>Total a pagar: ${formatQ(r.comision)}</b></div>
+        </div>
       `);
     }
 
