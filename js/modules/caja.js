@@ -15,6 +15,25 @@ async function getTodayMovements() {
   return all.filter((m) => m.fecha === todayISO());
 }
 
+/**
+ * Devuelve una función que dice QUIÉN hizo el movimiento. Si viene de una venta u
+ * orden, muestra al empleado que la realizó (no la cuenta con la que se registró,
+ * que al ser compartida diría siempre lo mismo).
+ */
+async function crearResolverResponsable() {
+  const [sales, orders] = await Promise.all([getAll('sales'), getAll('serviceOrders')]);
+  const porReferencia = new Map();
+  sales.forEach((s) => {
+    const n = (s.empleadosComision || []).map((e) => e.empleadoNombre).filter(Boolean).join(', ');
+    if (n) porReferencia.set(s.id, n);
+  });
+  orders.forEach((o) => {
+    const n = (o.empleados || []).map((e) => e.empleadoNombre).filter(Boolean).join(', ');
+    if (n) porReferencia.set(o.id, n);
+  });
+  return (m) => porReferencia.get(m.referenciaId) || m.usuarioNombre || '';
+}
+
 function computeExpected(movements) {
   const fondoInicial = movements.filter((m) => m.categoria === 'fondo_inicial').reduce((s, m) => s + m.monto, 0);
   const entradas = movements.filter((m) => m.tipo === 'entrada' && m.categoria !== 'fondo_inicial');
@@ -59,7 +78,7 @@ async function render(container) {
   // ---------------- Control de efectivo ----------------
   async function renderControl(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const movements = await getTodayMovements();
+    const [movements, responsableDe] = await Promise.all([getTodayMovements(), crearResolverResponsable()]);
     const stats = computeExpected(movements);
     const hasFondo = movements.some((m) => m.categoria === 'fondo_inicial');
 
@@ -121,7 +140,7 @@ async function render(container) {
         { key: 'categoria', label: 'Categoría', format: (r) => escapeHtml(CATEGORIA_LABEL[r.categoria] || r.categoria) },
         { key: 'monto', label: 'Monto', format: (r) => formatQ(r.monto) },
         { key: 'motivo', label: 'Motivo' },
-        { key: 'usuarioNombre', label: 'Usuario' },
+        { key: 'usuarioNombre', label: 'Responsable', format: (r) => escapeHtml(responsableDe(r)) },
       ],
       rows: movements,
       pageSize: 8,
@@ -203,7 +222,7 @@ async function render(container) {
         { key: 'contado', label: 'Contado', format: (r) => formatQ(r.contado) },
         { key: 'diferencia', label: 'Diferencia', format: (r) => formatQ(r.diferencia) },
         { key: 'estado', label: 'Estado', format: (r) => `<span class="badge ${r.estado === 'cuadrada' ? 'badge-success' : r.estado === 'sobrante' ? 'badge-info' : 'badge-danger'}">${escapeHtml(r.estado)}</span>` },
-        { key: 'usuarioNombre', label: 'Usuario' },
+        { key: 'usuarioNombre', label: 'Registrado por' },
       ],
       rows: closings,
       pageSize: 10,
@@ -266,7 +285,7 @@ async function render(container) {
       columns: [
         { key: 'fecha', label: 'Fecha' },
         { key: 'motivo', label: 'Motivo' },
-        { key: 'usuarioNombre', label: 'Usuario' },
+        { key: 'usuarioNombre', label: 'Registrado por' },
         { key: 'monto', label: 'Monto', format: (r) => formatQ(r.monto) },
         { key: 'estado', label: 'Estado', format: (r) => r.estado === 'devuelto'
             ? `<span class="badge badge-success">Devuelto</span>` : `<span class="badge badge-warning">Pendiente</span>` },
@@ -296,7 +315,10 @@ async function render(container) {
   // ---------------- Historial completo ----------------
   async function renderHistorial(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const movements = await getAll('cashMovements', { order: 'createdAt', direction: 'desc' });
+    const [movements, responsableDe] = await Promise.all([
+      getAll('cashMovements', { order: 'createdAt', direction: 'desc' }),
+      crearResolverResponsable(),
+    ]);
     const table = renderTable({
       columns: [
         { key: 'createdAt', label: 'Fecha/hora', format: (r) => formatDateTime(r.createdAt) },
@@ -304,7 +326,7 @@ async function render(container) {
         { key: 'categoria', label: 'Categoría', format: (r) => escapeHtml(CATEGORIA_LABEL[r.categoria] || r.categoria) },
         { key: 'monto', label: 'Monto', format: (r) => formatQ(r.monto) },
         { key: 'motivo', label: 'Motivo' },
-        { key: 'usuarioNombre', label: 'Usuario' },
+        { key: 'usuarioNombre', label: 'Responsable', format: (r) => escapeHtml(responsableDe(r)) },
       ],
       rows: movements,
       searchKeys: ['motivo', 'usuarioNombre'],
