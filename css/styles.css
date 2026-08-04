@@ -154,3 +154,21 @@ tbody tr:hover{background:var(--bg)}
 .mas-detalles[open] summary{margin-bottom:4px}
 .libre-box{border:1px solid var(--primary);background:var(--primary-light);border-radius:8px;padding:12px;margin-top:10px}
 .libre-box .form-row{margin-bottom:10px}
+
+/* Gráficas del dashboard */
+.chart-svg{display:block;width:100%;height:auto;overflow:visible}
+.hbars{display:flex;flex-direction:column;gap:11px;padding:4px 0}
+.hbar-row{display:grid;grid-template-columns:minmax(0,1fr) 42% auto;align-items:center;gap:10px}
+.hbar-label{font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar-track{background:var(--bg);border-radius:20px;height:14px;overflow:hidden}
+.hbar-fill{display:block;height:100%;border-radius:20px;min-width:3px}
+.hbar-value{font-size:13px;font-weight:700;white-space:nowrap;text-align:right;min-width:34px}
+@media (max-width:640px){
+  .hbar-row{grid-template-columns:minmax(0,1fr) 32% auto;gap:8px}
+  .hbar-label{font-size:12.5px}
+}
+.chart-scroll{width:100%}
+@media (max-width:700px){
+  .chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .chart-scroll .chart-svg{min-width:480px}
+}
