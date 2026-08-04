@@ -115,9 +115,10 @@ async function render(container) {
 
     function draw() {
       const rows = allSales.filter((s) => s.fecha >= range.from && s.fecha <= range.to)
-        .map((s) => ({ numero: s.numero, fecha: s.fecha, cliente: s.clienteNombre, formaPago: s.formaPago, total: formatQ(s.total), usuario: s.usuarioNombre }));
+        .map((s) => ({ numero: s.numero, fecha: s.fecha, cliente: s.clienteNombre, formaPago: s.formaPago, total: formatQ(s.total),
+          usuario: (s.empleadosComision || []).map((e) => e.empleadoNombre).join(', ') || '—' }));
       const totalQ = round2(allSales.filter((s) => s.fecha >= range.from && s.fecha <= range.to).reduce((sum, s) => sum + s.total, 0));
-      const cols = [{ key: 'numero', label: 'No.' }, { key: 'fecha', label: 'Fecha' }, { key: 'cliente', label: 'Cliente' }, { key: 'formaPago', label: 'Pago' }, { key: 'total', label: 'Total' }, { key: 'usuario', label: 'Usuario' }];
+      const cols = [{ key: 'numero', label: 'No.' }, { key: 'fecha', label: 'Fecha' }, { key: 'cliente', label: 'Cliente' }, { key: 'formaPago', label: 'Pago' }, { key: 'total', label: 'Total' }, { key: 'usuario', label: 'Realizada por' }];
       el.innerHTML = `
         <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
         <div class="stat-card mt-16" style="max-width:260px"><div class="label">Total del período</div><div class="value">${formatQ(totalQ)}</div></div>

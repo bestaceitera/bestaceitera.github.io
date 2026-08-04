@@ -56,6 +56,14 @@ export function onAuthChange(callback) {
         callback(null, 'Tu usuario está inactivo. Contacta al administrador.');
         return;
       }
+      // Los empleados existen solo para asignar ventas y comisiones: no son
+      // cuentas de acceso. Solo el administrador y la cuenta de empleado entran.
+      if (profile.tipo === 'empleado') {
+        await signOut(auth);
+        currentProfile = null;
+        callback(null, 'Este nombre es de un empleado (para comisiones), no una cuenta de acceso.');
+        return;
+      }
       callback({ uid: fbUser.uid, ...profile });
     } catch (err) {
       console.error('ensureProfile', err);

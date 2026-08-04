@@ -16,7 +16,7 @@ async function render(container) {
       { key: 'clienteNombre', label: 'Cliente' },
       { key: 'formaPago', label: 'Pago', format: (r) => `<span class="badge badge-info">${escapeHtml(r.formaPago)}</span>` },
       { key: 'total', label: 'Total', format: (r) => formatQ(r.total) },
-      { key: 'usuarioNombre', label: 'Usuario' },
+      { key: 'empleados', label: 'Realizada por', format: (r) => escapeHtml((r.empleadosComision || []).map((e) => e.empleadoNombre).join(', ')) || '<span class="text-muted">—</span>' },
       { key: 'acciones', label: '', format: (r) => `<button class="btn btn-secondary btn-sm" data-view="${r.id}">Ver detalle</button>` },
     ],
     rows: sales,
@@ -37,7 +37,7 @@ async function render(container) {
 
   function viewDetail(s) {
     openModal(`Venta ${s.numero}`, `
-      <p><b>Cliente:</b> ${escapeHtml(s.clienteNombre)} &nbsp; <b>Fecha:</b> ${escapeHtml(s.fecha)} &nbsp; <b>Usuario:</b> ${escapeHtml(s.usuarioNombre)}</p>
+      <p><b>Cliente:</b> ${escapeHtml(s.clienteNombre)} &nbsp; <b>Fecha:</b> ${escapeHtml(s.fecha)} &nbsp; <b>Registró:</b> ${escapeHtml(s.usuarioNombre)}</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
         <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}${i.libre ? ' <span class="badge badge-info">suelto</span>' : ''}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
@@ -56,7 +56,9 @@ async function render(container) {
     ]);
     // Aunque no haya productos en el catálogo se puede vender: existen los artículos sueltos.
     const activeProducts = products.filter((p) => p.estado !== 'inactivo');
-    const activeUsers = users.filter((u) => u.activo !== false);
+    // Los empleados son quienes realizan la venta (no las cuentas de acceso).
+    const activeUsers = users.filter((u) => u.tipo === 'empleado' && u.activo !== false);
+    if (!activeUsers.length) { toast('Primero registra a tus empleados en Usuarios → Empleados.', 'danger', 6000); return; }
     const user = getCurrentUser();
     const cart = [];
     const prodSearch = productSearch(activeProducts, { id: 'v-producto', label: 'Buscar producto', clearOnSelect: true });
@@ -74,11 +76,11 @@ async function render(container) {
         </label>
       </div>
 
-      <div class="section-title">Empleados que realizaron esta venta</div>
+      <div class="section-title">¿Quién realizó esta venta?</div>
       <div class="tag-list" id="v-empleados">
         ${activeUsers.map((u) => `<label class="chip" style="cursor:pointer">
-            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto" ${u.id === user.uid ? 'checked' : ''}> ${escapeHtml(u.nombre)}
-          </label>`).join('') || '<span class="text-muted">No hay usuarios activos.</span>'}
+            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto"> ${escapeHtml(u.nombre)}
+          </label>`).join('')}
       </div>
 
       <div class="section-title">Productos</div>

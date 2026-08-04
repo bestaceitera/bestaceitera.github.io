@@ -58,8 +58,9 @@ async function render(container) {
       getAll('products', { order: 'nombre' }),
       getAll('users', { order: 'nombre' }),
     ]);
-    const activeUsers = users.filter((u) => u.activo !== false);
-    if (!activeUsers.length) { toast('No hay usuarios activos para asignar la orden.', 'danger'); return; }
+    // Los empleados son quienes realizan el servicio (no las cuentas de acceso).
+    const activeUsers = users.filter((u) => u.tipo === 'empleado' && u.activo !== false);
+    if (!activeUsers.length) { toast('Primero registra a tus empleados en Usuarios → Empleados.', 'danger', 6000); return; }
     const customers = await getAll('customers', { order: 'nombre' });
     const currentUser = getCurrentUser();
 
@@ -83,7 +84,7 @@ async function render(container) {
       <div class="section-title">Empleados que realizaron el servicio</div>
       <div class="tag-list" id="os-empleados">
         ${activeUsers.map((u) => `<label class="chip" style="cursor:pointer">
-            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto" ${u.id === currentUser.uid ? 'checked' : ''}> ${escapeHtml(u.nombre)}
+            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto"> ${escapeHtml(u.nombre)}
           </label>`).join('')}
       </div>
 
