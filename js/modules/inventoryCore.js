@@ -1,8 +1,8 @@
-// Helpers compartidos para mover inventario (compras, ventas, órdenes de servicio) y dejar kardex.
+// Helpers compartidos para mover inventario (compras, ventas, órdenes de servicio) y dejar historial.
 import { getById, updateRecord, addRecord } from '../data.js';
 
 /**
- * Ajusta el stock de un producto y registra el movimiento en el kardex.
+ * Ajusta el stock de un producto y registra el movimiento en el historial.
  * delta: positivo para entradas (compra), negativo para salidas (venta/servicio).
  */
 export async function applyStockChange(productId, delta, { motivo, referenciaId, usuario, extra = {} }) {

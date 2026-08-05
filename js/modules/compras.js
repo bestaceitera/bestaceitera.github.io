@@ -134,7 +134,7 @@ async function render(container) {
         const user = getCurrentUser();
         const provOpt = $('c-proveedor').selectedOptions[0];
         const total = round2(cart.reduce((s, i) => s + i.subtotal, 0));
-        const numero = await nextFolio('purchases', { prefix: 'C-', pad: 5 });
+        const numero = await nextFolio('purchases', { prefix: 'C', pad: 1 });
         const purchaseId = await addRecord('purchases', {
           numero,
           proveedorId: provOpt.value,

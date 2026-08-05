@@ -42,7 +42,7 @@ async function render(container) {
     ${lowStock.length ? `<div class="card" style="border-color:var(--danger);background:var(--danger-light);margin-bottom:16px">
         <b>⚠ Alerta de stock bajo:</b> ${lowStock.map((p) => `${p.nombre} (${p.stock})`).join(', ')}
       </div>` : ''}
-    <div class="section-title">Kardex / historial de movimientos</div>
+    <div class="section-title">Entradas y salidas de productos</div>
     <div class="card" id="inv-kardex-card">${table.html}</div>
   `;
   const card = container.querySelector('#inv-kardex-card');
@@ -51,7 +51,7 @@ async function render(container) {
 
   /**
    * Salida de productos para consumo propio del negocio: descuenta stock y deja
-   * constancia en el kardex, pero NO toca la caja (no entra ni sale dinero, así
+   * constancia en el historial, pero NO toca la caja (no entra ni sale dinero, así
    * que no afecta el cuadre diario).
    */
   function openUsoPropioForm() {
@@ -64,7 +64,7 @@ async function render(container) {
     openModal('Salida por uso propio', `
       <div class="card" style="background:var(--primary-light);border-color:var(--primary);margin-bottom:14px">
         Estos productos <b>salen del inventario pero no mueven dinero</b>: no entran a la caja
-        ni afectan el cuadre diario. Quedan registrados en el kardex a nombre de quien los saca.
+        ni afectan el cuadre diario. Quedan registrados en el historial a nombre de quien los saca.
       </div>
       <div class="form-row">
         <label>Responsable <input id="up-responsable" value="${escapeHtml(user?.nombre || '')}"></label>

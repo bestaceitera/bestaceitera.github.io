@@ -308,7 +308,7 @@ async function render(container) {
         const clienteOpt = $('os-cliente').selectedOptions[0];
         const clienteId = clienteOpt.value;
         const clienteNombre = clienteId === 'CF' ? CONSUMIDOR_FINAL.nombre : clienteOpt.dataset.nombre;
-        const numero = await nextFolio('serviceOrders', { prefix: 'OS-', pad: 5 });
+        const numero = await nextFolio('serviceOrders', { prefix: 'S', pad: 1 });
         const vuelto = (formaPago === 'efectivo' || formaPago === 'mixto') ? Math.max(0, round2(recibido - total)) : 0;
         const orderId = await addRecord('serviceOrders', {
           numero,

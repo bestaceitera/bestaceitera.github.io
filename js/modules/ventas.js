@@ -371,7 +371,7 @@ async function render(container) {
         const clienteOpt = $('v-cliente').selectedOptions[0];
         const clienteId = clienteOpt.value;
         const clienteNombre = clienteId === 'CF' ? CONSUMIDOR_FINAL.nombre : clienteOpt.dataset.nombre;
-        const numero = await nextFolio('sales', { prefix: 'V-', pad: 6 });
+        const numero = await nextFolio('sales', { prefix: 'V', pad: 1 });
         const fechaVenta = $('v-fecha').value || todayISO();
 
         const saleId = await addRecord('sales', {
