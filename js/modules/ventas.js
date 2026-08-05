@@ -1,7 +1,7 @@
 import { getAll, getById, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
-import { openModal, closeModal, toast, productSearch } from '../ui.js';
+import { openModal, closeModal, toast, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
@@ -13,6 +13,7 @@ async function render(container) {
 
   let busqueda = '';
   let pagina = 1;
+  let rango = applyRangePreset('todo');
 
   container.innerHTML = `
     <div class="card">
@@ -21,6 +22,8 @@ async function render(container) {
         <div class="spacer"></div>
         <button class="btn btn-primary btn-sm" id="btn-new">+ Nueva venta</button>
       </div>
+      <div class="toolbar" id="v-filtros" style="margin-top:10px">${dateRangePresetButtons({ conAyer: true })}</div>
+      <div id="v-resumen"></div>
       <div id="v-dias"></div>
       <div class="pagination" id="v-paginacion"></div>
     </div>`;
@@ -45,18 +48,30 @@ async function render(container) {
 
   function filtrar() {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return sales;
     return sales.filter((s) => {
+      const fecha = s.fecha || '';
+      if (fecha < rango.from || fecha > rango.to) return false;
+      if (!q) return true;
       const empleados = (s.empleadosComision || []).map((e) => e.empleadoNombre).join(' ');
       return `${s.numero} ${s.clienteNombre || ''} ${empleados}`.toLowerCase().includes(q);
     });
   }
 
   function pintar() {
-    const dias = agruparPorDia(filtrar());
+    const filtradas = filtrar();
+    const dias = agruparPorDia(filtradas);
     const totalPaginas = Math.max(1, Math.ceil(dias.length / DIAS_POR_PAGINA));
     if (pagina > totalPaginas) pagina = totalPaginas;
     const visibles = dias.slice((pagina - 1) * DIAS_POR_PAGINA, pagina * DIAS_POR_PAGINA);
+
+    const totalPeriodo = round2(filtradas.reduce((s, v) => s + Number(v.total || 0), 0));
+    const esTodo = rango.from === '2000-01-01';
+    card.querySelector('#v-resumen').innerHTML = filtradas.length ? `
+      <div class="periodo-resumen">
+        <span>${esTodo ? 'Todas las ventas' : `Del ${escapeHtml(rango.from)} al ${escapeHtml(rango.to)}`}</span>
+        <span>${filtradas.length} venta${filtradas.length === 1 ? '' : 's'} en ${dias.length} día${dias.length === 1 ? '' : 's'}
+          · <b>Total: ${formatQ(totalPeriodo)}</b></span>
+      </div>` : '';
 
     const cont = card.querySelector('#v-dias');
     cont.innerHTML = dias.length ? visibles.map((d) => `
@@ -77,7 +92,10 @@ async function render(container) {
           </tr>`).join('')}</tbody>
         </table></div>
       </div>`).join('')
-      : `<div class="table-empty" style="padding:30px">${busqueda ? 'Ninguna venta coincide con la búsqueda.' : 'Aún no hay ventas registradas.'}</div>`;
+      : `<div class="table-empty" style="padding:30px">${
+          busqueda ? 'Ninguna venta coincide con la búsqueda.'
+          : rango.from === '2000-01-01' ? 'Aún no hay ventas registradas.'
+          : 'No hubo ventas en las fechas seleccionadas.'}</div>`;
 
     const pag = card.querySelector('#v-paginacion');
     pag.innerHTML = dias.length
@@ -91,6 +109,7 @@ async function render(container) {
   }
 
   card.querySelector('#v-buscar').addEventListener('input', (e) => { busqueda = e.target.value; pagina = 1; pintar(); });
+  bindRangeControls(card.querySelector('#v-filtros'), (r) => { rango = r; pagina = 1; pintar(); });
   card.querySelector('#btn-new').addEventListener('click', openSaleForm);
   card.addEventListener('click', (e) => {
     const id = e.target.dataset.view;

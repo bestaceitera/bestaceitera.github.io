@@ -181,3 +181,5 @@ tbody tr:hover{background:var(--bg)}
 .dia-resumen{font-size:13px;color:var(--text-muted)}
 .dia-resumen b{color:var(--text);font-size:14.5px}
 .dia-grupo .table-wrap{border-radius:0 0 8px 8px}
+.periodo-resumen{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;align-items:baseline;padding:10px 12px;margin:12px 0;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted)}
+.periodo-resumen b{color:var(--text);font-size:15px}

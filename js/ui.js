@@ -1,4 +1,4 @@
-import { escapeHtml, formatQ } from './utils.js';
+import { escapeHtml, formatQ, todayISO } from './utils.js';
 
 /* ---------------- Toast ---------------- */
 export function toast(message, type = 'info', ms = 3500) {
@@ -119,6 +119,60 @@ export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emp
   }
 
   return { html, mount };
+}
+
+/* ---------------- Filtro de fechas (compartido por Ventas y Reportes) ---------------- */
+/** Fecha local en formato YYYY-MM-DD, sin que la zona horaria corra el día. */
+function isoLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function applyRangePreset(range) {
+  const now = new Date();
+  if (range === 'hoy') return { from: todayISO(), to: todayISO() };
+  if (range === 'ayer') {
+    const ayer = new Date(now); ayer.setDate(now.getDate() - 1);
+    return { from: isoLocal(ayer), to: isoLocal(ayer) };
+  }
+  if (range === 'semana') {
+    const day = now.getDay() || 7;
+    const lunes = new Date(now); lunes.setDate(now.getDate() - day + 1);
+    return { from: isoLocal(lunes), to: todayISO() };
+  }
+  if (range === 'quincena') {
+    // Quincena guatemalteca: del 1 al 15, o del 16 al fin de mes.
+    const inicio = now.getDate() <= 15 ? 1 : 16;
+    return { from: isoLocal(new Date(now.getFullYear(), now.getMonth(), inicio)), to: todayISO() };
+  }
+  if (range === 'mes') return { from: isoLocal(new Date(now.getFullYear(), now.getMonth(), 1)), to: todayISO() };
+  if (range === 'anio') return { from: isoLocal(new Date(now.getFullYear(), 0, 1)), to: todayISO() };
+  return { from: '2000-01-01', to: '2100-01-01' };
+}
+
+export function dateRangePresetButtons({ conAyer = false } = {}) {
+  return `
+    <button class="btn btn-secondary btn-sm" data-range="hoy">Hoy</button>
+    ${conAyer ? `<button class="btn btn-secondary btn-sm" data-range="ayer">Ayer</button>` : ''}
+    <button class="btn btn-secondary btn-sm" data-range="semana">Esta semana</button>
+    <button class="btn btn-secondary btn-sm" data-range="quincena">Esta quincena</button>
+    <button class="btn btn-secondary btn-sm" data-range="mes">Este mes</button>
+    <button class="btn btn-secondary btn-sm" data-range="anio">Este año</button>
+    <button class="btn btn-secondary btn-sm" data-range="todo">Todo</button>
+    <input type="date" data-from style="width:auto;padding:5px 8px;font-size:12.5px">
+    <input type="date" data-to style="width:auto;padding:5px 8px;font-size:12.5px">
+    <button class="btn btn-secondary btn-sm" data-apply>Aplicar fechas</button>
+  `;
+}
+
+export function bindRangeControls(el, setRange) {
+  el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => setRange(applyRangePreset(b.dataset.range))));
+  el.querySelector('[data-apply]')?.addEventListener('click', () => {
+    const from = el.querySelector('[data-from]').value;
+    const to = el.querySelector('[data-to]').value;
+    if (!from || !to) { toast('Elige las dos fechas.', 'info'); return; }
+    if (from > to) { toast('La fecha inicial no puede ser mayor que la final.', 'danger'); return; }
+    setRange({ from, to });
+  });
 }
 
 /* ---------------- Buscador de productos (combobox) ---------------- */

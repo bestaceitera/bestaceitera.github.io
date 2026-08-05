@@ -1,50 +1,7 @@
 import { getAll } from '../data.js';
-import { renderTable, openModal } from '../ui.js';
+import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, todayISO, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
-
-function dateRangePresetButtons() {
-  return `
-    <button class="btn btn-secondary btn-sm" data-range="hoy">Hoy</button>
-    <button class="btn btn-secondary btn-sm" data-range="semana">Esta semana</button>
-    <button class="btn btn-secondary btn-sm" data-range="quincena">Esta quincena</button>
-    <button class="btn btn-secondary btn-sm" data-range="mes">Este mes</button>
-    <button class="btn btn-secondary btn-sm" data-range="anio">Este año</button>
-    <button class="btn btn-secondary btn-sm" data-range="todo">Todo</button>
-    <input type="date" data-from style="width:auto;padding:5px 8px;font-size:12.5px">
-    <input type="date" data-to style="width:auto;padding:5px 8px;font-size:12.5px">
-    <button class="btn btn-secondary btn-sm" data-apply>Aplicar fechas</button>
-  `;
-}
-
-function bindRangeControls(el, setRange) {
-  el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => setRange(applyRangePreset(b.dataset.range))));
-  el.querySelector('[data-apply]')?.addEventListener('click', () => {
-    const from = el.querySelector('[data-from]').value;
-    const to = el.querySelector('[data-to]').value;
-    if (!from || !to || from > to) return;
-    setRange({ from, to });
-  });
-}
-
-function applyRangePreset(range) {
-  const now = new Date();
-  const iso = (d) => d.toISOString().slice(0, 10);
-  if (range === 'hoy') return { from: todayISO(), to: todayISO() };
-  if (range === 'semana') {
-    const day = now.getDay() || 7;
-    const monday = new Date(now); monday.setDate(now.getDate() - day + 1);
-    return { from: iso(monday), to: todayISO() };
-  }
-  if (range === 'quincena') {
-    // Quincena guatemalteca: del 1 al 15, o del 16 al fin de mes.
-    const inicio = now.getDate() <= 15 ? 1 : 16;
-    return { from: iso(new Date(now.getFullYear(), now.getMonth(), inicio)), to: todayISO() };
-  }
-  if (range === 'mes') return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: todayISO() };
-  if (range === 'anio') return { from: iso(new Date(now.getFullYear(), 0, 1)), to: todayISO() };
-  return { from: '2000-01-01', to: '2100-01-01' };
-}
 
 async function render(container) {
   container.innerHTML = `
