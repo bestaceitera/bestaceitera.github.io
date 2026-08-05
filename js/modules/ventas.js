@@ -1,14 +1,15 @@
-import { getAll, getById, addRecord, nextFolio } from '../data.js';
+import { getAll, getById, addRecord, updateRecord, removeRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
-import { openModal, closeModal, toast, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
+import { openModal, closeModal, toast, confirmDialog, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
 
 const DIAS_POR_PAGINA = 7;
 
-async function render(container) {
+async function render(container, profile) {
+  const esAdmin = profile?.role === 'admin';
   const sales = await getAll('sales', { order: 'createdAt', direction: 'desc', max: 300 });
 
   let busqueda = '';
@@ -127,7 +128,123 @@ async function render(container) {
       <p class="mt-16 text-right">${s.iva > 0 ? `IVA (12%): ${formatQ(s.iva)}<br>` : ''}${s.descuentoTotal > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>Descuento: −${formatQ(s.descuentoTotal)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
       <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
       <p><b>Empleados:</b> ${(s.empleadosComision || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
+      ${esAdmin ? `<div class="modal-actions">
+        <button class="btn btn-secondary" id="v-editar">Editar</button>
+        <button class="btn btn-danger" id="v-eliminar">Eliminar venta</button>
+      </div>` : ''}
     `);
+    if (!esAdmin) return;
+    document.getElementById('v-editar').addEventListener('click', () => openEditForm(s));
+    document.getElementById('v-eliminar').addEventListener('click', () => eliminarVenta(s));
+  }
+
+  /**
+   * Al eliminar una venta se deshace TODO lo que provocó: devuelve el stock,
+   * quita su entrada y su vuelto de la caja y borra su rastro del historial de
+   * inventario. Queda como si nunca se hubiera registrado.
+   */
+  async function eliminarVenta(s) {
+    const conStock = (s.items || []).filter((i) => i.productoId);
+    const ok = await confirmDialog(
+      `¿Eliminar la venta ${s.numero} de ${formatQ(s.total)}?\n\n` +
+      `Se va a deshacer todo:\n` +
+      (conStock.length ? `• Devolver al inventario: ${conStock.map((i) => `${i.cantidad} × ${i.nombre}`).join(', ')}\n` : '• No hay stock que devolver (artículos sueltos)\n') +
+      `• Quitar de la caja lo que entró y el vuelto de esta venta\n\n` +
+      `Esta acción no se puede deshacer.`
+    );
+    if (!ok) return;
+    try {
+      // 1) Devolver el stock que había salido
+      for (const item of conStock) {
+        await applyStockChange(item.productoId, item.cantidad, {
+          motivo: 'devolución por venta eliminada', referenciaId: null, usuario: getCurrentUser(),
+        });
+      }
+      // 2) Quitar de la caja y del historial de inventario todo lo ligado a esta venta
+      const [movsCaja, movsInv] = await Promise.all([getAll('cashMovements'), getAll('inventoryMovements')]);
+      for (const m of movsCaja.filter((m) => m.referenciaId === s.id)) await removeRecord('cashMovements', m.id);
+      for (const m of movsInv.filter((m) => m.referenciaId === s.id)) await removeRecord('inventoryMovements', m.id);
+      // 3) Y el movimiento de devolución que acabo de crear tampoco debe quedar:
+      //    el objetivo es que la venta no haya existido nunca.
+      const invDespues = await getAll('inventoryMovements');
+      for (const m of invDespues.filter((m) => m.motivo === 'devolución por venta eliminada')) {
+        await removeRecord('inventoryMovements', m.id);
+      }
+      await removeRecord('sales', s.id);
+      toast(`Venta ${s.numero} eliminada. Stock y caja quedaron como antes.`, 'success', 6000);
+      closeModal();
+      render(container, profile);
+    } catch (err) {
+      toast('No se pudo eliminar: ' + err.message, 'danger', 6000);
+    }
+  }
+
+  /** Solo se editan los datos que NO mueven dinero ni inventario. */
+  async function openEditForm(s) {
+    const users = await getAll('users', { order: 'nombre' });
+    const empleados = users.filter((u) => u.tipo === 'empleado' && u.activo !== false);
+    const customers = await getAll('customers', { order: 'nombre' });
+    const yaAsignados = new Set((s.empleadosComision || []).map((e) => e.empleadoId));
+
+    openModal(`Editar venta ${s.numero}`, `
+      <div class="card" style="background:var(--primary-light);border-color:var(--primary);margin-bottom:14px">
+        Aquí se corrigen <b>cliente, fecha y quién realizó la venta</b>. Para cambiar productos,
+        precios o el monto, elimina la venta y regístrala de nuevo (así el inventario y la caja
+        se recalculan bien).
+      </div>
+      <div class="form-row">
+        <label>Cliente
+          <select id="ed-cliente">
+            <option value="CF" ${s.clienteId === 'CF' ? 'selected' : ''}>Consumidor Final</option>
+            ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}" ${s.clienteId === c.id ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
+          </select>
+        </label>
+        <label>Fecha de la venta
+          <input type="date" id="ed-fecha" value="${escapeHtml(s.fecha || todayISO())}" max="${todayISO()}">
+        </label>
+      </div>
+      <div class="section-title">¿Quién realizó esta venta?</div>
+      <div class="tag-list" id="ed-empleados">
+        ${empleados.map((u) => `<label class="chip" style="cursor:pointer">
+            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto" ${yaAsignados.has(u.id) ? 'checked' : ''}> ${escapeHtml(u.nombre)}
+          </label>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancel-form">Cancelar</button>
+        <button class="btn btn-primary" id="ed-guardar">Guardar cambios</button>
+      </div>
+    `);
+    document.getElementById('cancel-form').addEventListener('click', closeModal);
+    document.getElementById('ed-guardar').addEventListener('click', async () => {
+      const marcados = [...document.querySelectorAll('#ed-empleados input:checked')].map((el) => ({
+        empleadoId: el.value, empleadoNombre: el.dataset.nombre, comisionPct: Number(el.dataset.comision) || 0,
+      }));
+      if (!marcados.length) { toast('Selecciona al menos un empleado.', 'danger'); return; }
+      const opt = document.getElementById('ed-cliente').selectedOptions[0];
+      const nuevaFecha = document.getElementById('ed-fecha').value || s.fecha;
+      try {
+        await updateRecord('sales', s.id, {
+          clienteId: opt.value,
+          clienteNombre: opt.value === 'CF' ? CONSUMIDOR_FINAL.nombre : opt.dataset.nombre,
+          clienteTipo: opt.value === 'CF' ? 'CF' : 'registrado',
+          fecha: nuevaFecha,
+          empleadosComision: marcados,
+        });
+        // Si cambió la fecha, sus movimientos de caja deben moverse al mismo día
+        // para que el cuadre de cada día siga cuadrando.
+        if (nuevaFecha !== s.fecha) {
+          const movs = await getAll('cashMovements');
+          for (const m of movs.filter((m) => m.referenciaId === s.id)) {
+            await updateRecord('cashMovements', m.id, { fecha: nuevaFecha });
+          }
+        }
+        toast('Venta actualizada.', 'success');
+        closeModal();
+        render(container, profile);
+      } catch (err) {
+        toast('No se pudo guardar: ' + err.message, 'danger');
+      }
+    });
   }
 
   async function openSaleForm() {

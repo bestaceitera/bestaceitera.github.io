@@ -183,3 +183,7 @@ tbody tr:hover{background:var(--bg)}
 .dia-grupo .table-wrap{border-radius:0 0 8px 8px}
 .periodo-resumen{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;align-items:baseline;padding:10px 12px;margin:12px 0;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted)}
 .periodo-resumen b{color:var(--text);font-size:15px}
+.cuadre-aviso{margin:12px 0;padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.5;border:1px solid}
+.cuadre-aviso.ok{background:var(--success-light,#e8f5ec);border-color:var(--success);color:#14622f}
+.cuadre-aviso.falta{background:var(--danger-light);border-color:var(--danger);color:#8c1219}
+.cuadre-aviso.sobra{background:var(--primary-light);border-color:var(--primary);color:var(--primary-dark)}

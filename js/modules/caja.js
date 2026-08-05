@@ -183,22 +183,53 @@ async function render(container) {
       ${todayClosing ? `
         <div class="card mt-16">
           <b>El cuadre de hoy ya se realizó.</b>
-          <p>Contado: ${formatQ(todayClosing.contado)} — Diferencia: ${formatQ(todayClosing.diferencia)} —
-            <span class="badge ${todayClosing.estado === 'cuadrada' ? 'badge-success' : todayClosing.estado === 'sobrante' ? 'badge-info' : 'badge-danger'}">
-              ${todayClosing.estado === 'cuadrada' ? 'Caja cuadrada' : todayClosing.estado === 'sobrante' ? 'Sobrante' : 'Faltante'}
-            </span>
-          </p>
+          <p>Debía haber ${formatQ(todayClosing.esperado)} · Contaste ${formatQ(todayClosing.contado)}</p>
+          <div class="cuadre-aviso ${todayClosing.estado === 'cuadrada' ? 'ok' : todayClosing.estado === 'sobrante' ? 'sobra' : 'falta'}">
+            ${todayClosing.estado === 'cuadrada' ? '✓ <b>La caja cuadró exactamente.</b>'
+              : todayClosing.estado === 'sobrante' ? `<b>Sobraron ${formatQ(todayClosing.diferencia)}</b>`
+              : `<b>Faltaron ${formatQ(Math.abs(todayClosing.diferencia))}</b> — hay que reponerlos a la caja.`}
+          </div>
+          ${todayClosing.observaciones ? `<p class="text-muted mt-16">${escapeHtml(todayClosing.observaciones)}</p>` : ''}
         </div>` : `
         <div class="card mt-16">
           <div class="section-title" style="margin-top:0">Realizar cuadre de hoy</div>
-          <label>Dinero contado físicamente (Q) <input type="number" id="contado" min="0" step="0.01" required></label>
-          <label>Observaciones <textarea id="cuadre-obs" rows="2"></textarea></label>
+          <p class="text-muted" style="font-size:13px;margin-top:0">
+            Cuenta el dinero que hay físicamente en la caja y escríbelo aquí. El sistema te dice
+            al instante si cuadra, falta o sobra.
+          </p>
+          <label>Dinero contado físicamente (Q)
+            <input type="number" id="contado" min="0" step="0.01" placeholder="0.00" required>
+          </label>
+          <div id="cuadre-aviso"></div>
+          <label>Observaciones <textarea id="cuadre-obs" rows="2" placeholder="ej. faltó por vuelto mal dado"></textarea></label>
           <button class="btn btn-primary" id="btn-cuadre">Guardar cuadre</button>
         </div>`}
 
       <div class="section-title">Historial de cuadres</div>
       <div id="closings-table"></div>
     `;
+
+    // Aviso en vivo: apenas escribe el conteo ya sabe si cuadra, falta o sobra.
+    const inputContado = document.getElementById('contado');
+    inputContado?.addEventListener('input', () => {
+      const aviso = document.getElementById('cuadre-aviso');
+      if (inputContado.value === '') { aviso.innerHTML = ''; return; }
+      const contado = Number(inputContado.value) || 0;
+      const dif = round2(contado - stats.esperado);
+      if (dif === 0) {
+        aviso.innerHTML = `<div class="cuadre-aviso ok">✓ <b>La caja cuadra exactamente.</b> No falta ni sobra nada.</div>`;
+      } else if (dif < 0) {
+        aviso.innerHTML = `<div class="cuadre-aviso falta">
+          <b>Faltan ${formatQ(Math.abs(dif))}</b><br>
+          Deberían haber ${formatQ(stats.esperado)} y contaste ${formatQ(contado)}.
+          Hay que reponer <b>${formatQ(Math.abs(dif))}</b> a la caja para que cuadre.</div>`;
+      } else {
+        aviso.innerHTML = `<div class="cuadre-aviso sobra">
+          <b>Sobran ${formatQ(dif)}</b><br>
+          Deberían haber ${formatQ(stats.esperado)} y contaste ${formatQ(contado)}.
+          Hay que sacar <b>${formatQ(dif)}</b> de la caja o revisar qué venta no se registró.</div>`;
+      }
+    });
 
     document.getElementById('btn-cuadre')?.addEventListener('click', async () => {
       const contado = Number(document.getElementById('contado').value);

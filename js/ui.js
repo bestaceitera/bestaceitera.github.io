@@ -44,7 +44,7 @@ document.getElementById('modal-backdrop')?.addEventListener('click', (e) => {
 export function confirmDialog(message) {
   return new Promise((resolve) => {
     openModal('Confirmar', `
-      <p>${escapeHtml(message)}</p>
+      <p style="white-space:pre-line">${escapeHtml(message)}</p>
       <div class="modal-actions">
         <button class="btn btn-secondary" id="confirm-no">Cancelar</button>
         <button class="btn btn-danger" id="confirm-yes">Sí, continuar</button>
