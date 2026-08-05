@@ -172,3 +172,12 @@ tbody tr:hover{background:var(--bg)}
   .chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .chart-scroll .chart-svg{min-width:480px}
 }
+
+/* Ventas agrupadas por día */
+.dia-grupo{margin-bottom:18px}
+.dia-grupo:last-child{margin-bottom:0}
+.dia-header{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between;padding:8px 12px;background:var(--primary-light);border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0}
+.dia-fecha{font-weight:700;font-size:14px;color:var(--primary-dark)}
+.dia-resumen{font-size:13px;color:var(--text-muted)}
+.dia-resumen b{color:var(--text);font-size:14.5px}
+.dia-grupo .table-wrap{border-radius:0 0 8px 8px}

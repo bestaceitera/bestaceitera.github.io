@@ -94,7 +94,24 @@ document.addEventListener('modal:closed', () => {
   if (refrescoPendiente) { refrescoPendiente = false; programarRefresco(); }
 });
 
-async function renderRoute({ silencioso = false } = {}) {
+/* Dos pantallas no pueden dibujarse a la vez. Si se cambia de sección rápido (o
+ * entra un refresco automático a medio camino), la pantalla lenta terminaba
+ * escribiendo su contenido ENCIMA de la nueva y quedaba, por ejemplo, el título
+ * "Ventas" con el Dashboard debajo. Se resuelve encolando los dibujos y
+ * descartando los que ya quedaron viejos. */
+let tokenRender = 0;
+let colaRender = Promise.resolve();
+
+function renderRoute(opciones = {}) {
+  const miToken = ++tokenRender;
+  colaRender = colaRender.then(() => dibujarRuta(miToken, opciones)).catch((err) => console.error('renderRoute', err));
+  return colaRender;
+}
+
+async function dibujarRuta(miToken, { silencioso = false } = {}) {
+  // Si mientras esperaba turno se pidió otro dibujo, este ya no sirve.
+  if (miToken !== tokenRender) return;
+
   const hash = (location.hash || '#dashboard').slice(1);
   const route = routes.get(hash) || routes.get('dashboard');
   if (!route.roles.includes(currentProfile.role)) {
@@ -115,7 +132,9 @@ async function renderRoute({ silencioso = false } = {}) {
     await route.render(container, currentProfile);
   } catch (err) {
     console.error(err);
-    container.innerHTML = `<div class="empty-state">Ocurrió un error cargando esta sección.<br><span class="text-muted">${err.message || ''}</span></div>`;
+    if (miToken === tokenRender) {
+      container.innerHTML = `<div class="empty-state">Ocurrió un error cargando esta sección.<br><span class="text-muted">${err.message || ''}</span></div>`;
+    }
   }
   document.getElementById('sidebar').classList.remove('open');
 }

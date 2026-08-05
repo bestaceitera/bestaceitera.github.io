@@ -39,6 +39,24 @@ export function formatDateTime(value) {
     ' ' + d.toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Convierte "2026-08-04" en "Hoy", "Ayer" o "martes 4 de agosto de 2026".
+ * Se arma la fecha a mano para que no se corra un día por la zona horaria.
+ */
+export function formatDateLong(iso) {
+  if (!iso) return '';
+  const [a, m, d] = String(iso).split('-').map(Number);
+  if (!a || !m || !d) return iso;
+  if (iso === todayISO()) return 'Hoy';
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  const ayerISO = new Date(ayer - ayer.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  if (iso === ayerISO) return 'Ayer';
+  const fecha = new Date(a, m - 1, d);
+  const texto = fecha.toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
 export function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)

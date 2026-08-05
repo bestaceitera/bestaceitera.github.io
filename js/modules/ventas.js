@@ -1,39 +1,102 @@
 import { getAll, getById, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
-import { renderTable, openModal, closeModal, toast, productSearch } from '../ui.js';
-import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
+import { openModal, closeModal, toast, productSearch } from '../ui.js';
+import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
+
+const DIAS_POR_PAGINA = 7;
 
 async function render(container) {
   const sales = await getAll('sales', { order: 'createdAt', direction: 'desc', max: 300 });
 
-  const table = renderTable({
-    columns: [
-      { key: 'numero', label: 'No.' },
-      { key: 'fecha', label: 'Fecha' },
-      { key: 'clienteNombre', label: 'Cliente' },
-      { key: 'formaPago', label: 'Pago', format: (r) => `<span class="badge badge-info">${escapeHtml(r.formaPago)}</span>` },
-      { key: 'total', label: 'Total', format: (r) => formatQ(r.total) },
-      { key: 'empleados', label: 'Realizada por', format: (r) => escapeHtml((r.empleadosComision || []).map((e) => e.empleadoNombre).join(', ')) || '<span class="text-muted">—</span>' },
-      { key: 'acciones', label: '', format: (r) => `<button class="btn btn-secondary btn-sm" data-view="${r.id}">Ver detalle</button>` },
-    ],
-    rows: sales,
-    searchKeys: ['numero', 'clienteNombre', 'usuarioNombre'],
-    emptyMessage: 'Aún no hay ventas registradas.',
-    extraToolbar: `<button class="btn btn-primary btn-sm" id="btn-new">+ Nueva venta</button>`,
-  });
+  let busqueda = '';
+  let pagina = 1;
 
-  container.innerHTML = `<div class="card">${table.html}</div>`;
+  container.innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" class="search-box" id="v-buscar" placeholder="Buscar por No., cliente o empleado...">
+        <div class="spacer"></div>
+        <button class="btn btn-primary btn-sm" id="btn-new">+ Nueva venta</button>
+      </div>
+      <div id="v-dias"></div>
+      <div class="pagination" id="v-paginacion"></div>
+    </div>`;
   const card = container.querySelector('.card');
-  table.mount(card);
 
+  /** Agrupa las ventas por fecha, de la más reciente a la más antigua. */
+  function agruparPorDia(lista) {
+    const porDia = new Map();
+    lista.forEach((s) => {
+      const dia = s.fecha || 'sin fecha';
+      if (!porDia.has(dia)) porDia.set(dia, []);
+      porDia.get(dia).push(s);
+    });
+    return [...porDia.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([fecha, ventas]) => ({
+        fecha,
+        ventas,
+        total: round2(ventas.reduce((s, v) => s + Number(v.total || 0), 0)),
+      }));
+  }
+
+  function filtrar() {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return sales;
+    return sales.filter((s) => {
+      const empleados = (s.empleadosComision || []).map((e) => e.empleadoNombre).join(' ');
+      return `${s.numero} ${s.clienteNombre || ''} ${empleados}`.toLowerCase().includes(q);
+    });
+  }
+
+  function pintar() {
+    const dias = agruparPorDia(filtrar());
+    const totalPaginas = Math.max(1, Math.ceil(dias.length / DIAS_POR_PAGINA));
+    if (pagina > totalPaginas) pagina = totalPaginas;
+    const visibles = dias.slice((pagina - 1) * DIAS_POR_PAGINA, pagina * DIAS_POR_PAGINA);
+
+    const cont = card.querySelector('#v-dias');
+    cont.innerHTML = dias.length ? visibles.map((d) => `
+      <div class="dia-grupo">
+        <div class="dia-header">
+          <span class="dia-fecha">${escapeHtml(formatDateLong(d.fecha))}</span>
+          <span class="dia-resumen">${d.ventas.length} venta${d.ventas.length === 1 ? '' : 's'} · <b>${formatQ(d.total)}</b></span>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>No.</th><th>Cliente</th><th>Pago</th><th>Total</th><th>Realizada por</th><th></th></tr></thead>
+          <tbody>${d.ventas.map((s) => `<tr>
+            <td>${escapeHtml(s.numero)}</td>
+            <td>${escapeHtml(s.clienteNombre || '')}</td>
+            <td><span class="badge badge-info">${escapeHtml(s.formaPago)}</span></td>
+            <td>${formatQ(s.total)}</td>
+            <td>${escapeHtml((s.empleadosComision || []).map((e) => e.empleadoNombre).join(', ')) || '<span class="text-muted">—</span>'}</td>
+            <td><button class="btn btn-secondary btn-sm" data-view="${s.id}">Ver detalle</button></td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`).join('')
+      : `<div class="table-empty" style="padding:30px">${busqueda ? 'Ninguna venta coincide con la búsqueda.' : 'Aún no hay ventas registradas.'}</div>`;
+
+    const pag = card.querySelector('#v-paginacion');
+    pag.innerHTML = dias.length
+      ? `<span class="text-muted">${dias.length} día(s) con ventas</span>
+         <button class="btn btn-secondary btn-sm" data-act="prev" ${pagina <= 1 ? 'disabled' : ''}>‹</button>
+         <span class="text-muted">Página ${pagina} / ${totalPaginas}</span>
+         <button class="btn btn-secondary btn-sm" data-act="next" ${pagina >= totalPaginas ? 'disabled' : ''}>›</button>`
+      : '';
+    pag.querySelector('[data-act="prev"]')?.addEventListener('click', () => { pagina--; pintar(); });
+    pag.querySelector('[data-act="next"]')?.addEventListener('click', () => { pagina++; pintar(); });
+  }
+
+  card.querySelector('#v-buscar').addEventListener('input', (e) => { busqueda = e.target.value; pagina = 1; pintar(); });
   card.querySelector('#btn-new').addEventListener('click', openSaleForm);
   card.addEventListener('click', (e) => {
     const id = e.target.dataset.view;
     if (id) viewDetail(sales.find((s) => s.id === id));
   });
+  pintar();
 
   function viewDetail(s) {
     openModal(`Venta ${s.numero}`, `
