@@ -1,6 +1,6 @@
 import { isConfigured } from './firebase-config.js';
 import { login, logout, onAuthChange, friendlyAuthError, changeOwnPassword } from './auth.js';
-import { registerRoute, initRouter } from './router.js';
+import { registerRoute, initRouter, stopRouter } from './router.js';
 import { toast, openModal, closeModal, formValues } from './ui.js';
 import { getAll, addRecord } from './data.js';
 import { escapeHtml } from './utils.js';
@@ -64,6 +64,7 @@ async function seedIfEmpty() {
 }
 
 function showLoginView() {
+  stopRouter(); // suelta las escuchas en vivo antes de quedarse sin sesión
   document.getElementById('login-view').hidden = false;
   document.getElementById('app-view').hidden = true;
 }
@@ -80,6 +81,7 @@ function bindChrome() {
     document.getElementById('sidebar').classList.toggle('open');
   });
   document.getElementById('btn-logout')?.addEventListener('click', async () => {
+    stopRouter(); // primero se sueltan las escuchas, luego se cierra la sesión
     await logout();
     showLoginView();
   });

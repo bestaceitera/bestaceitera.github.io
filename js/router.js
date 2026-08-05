@@ -139,6 +139,17 @@ async function dibujarRuta(miToken, { silencioso = false } = {}) {
   document.getElementById('sidebar').classList.remove('open');
 }
 
+/**
+ * Al cerrar sesión hay que soltar las escuchas en vivo: si siguen activas sin
+ * sesión, Firestore las rechaza por permisos y ensucian la consola.
+ */
+export function stopRouter() {
+  detenerEscuchas();
+  clearTimeout(temporizador);
+  rutaActual = null;
+  refrescoPendiente = false;
+}
+
 export function initRouter(profile) {
   currentProfile = profile;
   buildSidebar(profile);
