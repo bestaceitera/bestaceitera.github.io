@@ -154,22 +154,21 @@ async function render(container, profile) {
     );
     if (!ok) return;
     try {
-      // 1) Devolver el stock que había salido
+      // 1) Devolver el stock directamente. No se registra un movimiento de
+      //    devolución porque la venta va a desaparecer: el objetivo es dejar
+      //    todo como si nunca se hubiera registrado.
       for (const item of conStock) {
-        await applyStockChange(item.productoId, item.cantidad, {
-          motivo: 'devolución por venta eliminada', referenciaId: null, usuario: getCurrentUser(),
-        });
+        const prod = await getById('products', item.productoId);
+        if (prod) await updateRecord('products', item.productoId, { stock: Number(prod.stock || 0) + Number(item.cantidad || 0) });
       }
-      // 2) Quitar de la caja y del historial de inventario todo lo ligado a esta venta
-      const [movsCaja, movsInv] = await Promise.all([getAll('cashMovements'), getAll('inventoryMovements')]);
-      for (const m of movsCaja.filter((m) => m.referenciaId === s.id)) await removeRecord('cashMovements', m.id);
-      for (const m of movsInv.filter((m) => m.referenciaId === s.id)) await removeRecord('inventoryMovements', m.id);
-      // 3) Y el movimiento de devolución que acabo de crear tampoco debe quedar:
-      //    el objetivo es que la venta no haya existido nunca.
-      const invDespues = await getAll('inventoryMovements');
-      for (const m of invDespues.filter((m) => m.motivo === 'devolución por venta eliminada')) {
-        await removeRecord('inventoryMovements', m.id);
-      }
+      // 2) Quitar de la caja y del historial solo lo ligado a ESTA venta
+      //    (se pregunta por su referencia, sin descargar las colecciones enteras).
+      const [movsCaja, movsInv] = await Promise.all([
+        getAll('cashMovements', { filters: [['referenciaId', '==', s.id]] }),
+        getAll('inventoryMovements', { filters: [['referenciaId', '==', s.id]] }),
+      ]);
+      for (const m of movsCaja) await removeRecord('cashMovements', m.id);
+      for (const m of movsInv) await removeRecord('inventoryMovements', m.id);
       await removeRecord('sales', s.id);
       toast(`Venta ${s.numero} eliminada. Stock y caja quedaron como antes.`, 'success', 6000);
       closeModal();
@@ -233,8 +232,8 @@ async function render(container, profile) {
         // Si cambió la fecha, sus movimientos de caja deben moverse al mismo día
         // para que el cuadre de cada día siga cuadrando.
         if (nuevaFecha !== s.fecha) {
-          const movs = await getAll('cashMovements');
-          for (const m of movs.filter((m) => m.referenciaId === s.id)) {
+          const movs = await getAll('cashMovements', { filters: [['referenciaId', '==', s.id]] });
+          for (const m of movs) {
             await updateRecord('cashMovements', m.id, { fecha: nuevaFecha });
           }
         }

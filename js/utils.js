@@ -118,16 +118,19 @@ function blobToDataURL(blob) {
  * El último intento es agresivo a propósito para GARANTIZAR que siempre quepa
  * (nunca debe fallar el guardado por una foto pesada).
  */
-export async function compressImageForFirestore(file, { maxBytes = 900000 } = {}) {
+export async function compressImageForFirestore(file, { maxBytes = 200000 } = {}) {
+  // Una boleta de depósito se lee perfectamente a ~1000px. Guardarla más grande
+  // solo gasta almacenamiento: a 700KB por foto, en 10 años se superaría el
+  // espacio gratuito. A ~150KB caben cómodamente miles de comprobantes.
   const attempts = [
-    { maxDim: 1600, quality: 0.85 },
-    { maxDim: 1400, quality: 0.75 },
-    { maxDim: 1100, quality: 0.65 },
+    { maxDim: 1200, quality: 0.65 },
+    { maxDim: 1000, quality: 0.6 },
     { maxDim: 900, quality: 0.55 },
+    { maxDim: 800, quality: 0.5 },
     { maxDim: 700, quality: 0.45 },
-    { maxDim: 500, quality: 0.35 },
-    { maxDim: 350, quality: 0.25 },
-    { maxDim: 220, quality: 0.15 },
+    { maxDim: 600, quality: 0.4 },
+    { maxDim: 450, quality: 0.3 },
+    { maxDim: 300, quality: 0.2 },
   ];
   let dataUrl = null;
   for (const { maxDim, quality } of attempts) {

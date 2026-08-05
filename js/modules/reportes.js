@@ -3,6 +3,20 @@ import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindR
 import { formatQ, todayISO, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 
+/**
+ * Trae de la base SOLO los registros del rango pedido, en vez de descargar la
+ * colección entera y filtrar aquí. Es lo que mantiene los reportes rápidos y
+ * baratos aunque con los años haya decenas de miles de ventas guardadas.
+ * El filtro por rango sobre un solo campo no necesita índices extra en Firestore.
+ */
+async function porRango(coleccion, { from, to }, { max = 5000 } = {}) {
+  const datos = await getAll(coleccion, {
+    filters: [['fecha', '>=', from], ['fecha', '<=', to]],
+    order: 'fecha', direction: 'desc', max,
+  });
+  return datos;
+}
+
 async function render(container) {
   container.innerHTML = `
     <div class="toolbar" style="margin-bottom:0">
@@ -34,7 +48,10 @@ async function render(container) {
   // ---------------- Inventario ----------------
   async function renderInventario(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [products, sales] = await Promise.all([getAll('products', { order: 'nombre' }), getAll('sales')]);
+    const [products, sales] = await Promise.all([
+      getAll('products', { order: 'nombre' }),
+      getAll('sales', { order: 'fecha', direction: 'desc', max: 5000 }),
+    ]);
     const soldQty = {};
     // Los artículos sueltos no tienen productoId, así que no cuentan en el ranking por producto.
     sales.forEach((s) => s.items?.forEach((i) => {
@@ -66,15 +83,15 @@ async function render(container) {
 
   // ---------------- Ventas ----------------
   async function renderVentas(el) {
-    el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const allSales = await getAll('sales', { order: 'fecha', direction: 'desc' });
     let range = { from: todayISO(), to: todayISO() };
 
-    function draw() {
-      const rows = allSales.filter((s) => s.fecha >= range.from && s.fecha <= range.to)
+    async function draw() {
+      el.innerHTML = '<div class="empty-state">Cargando…</div>';
+      const ventas = await porRango('sales', range);
+      const rows = ventas
         .map((s) => ({ numero: s.numero, fecha: s.fecha, cliente: s.clienteNombre, formaPago: s.formaPago, total: formatQ(s.total),
           usuario: (s.empleadosComision || []).map((e) => e.empleadoNombre).join(', ') || '—' }));
-      const totalQ = round2(allSales.filter((s) => s.fecha >= range.from && s.fecha <= range.to).reduce((sum, s) => sum + s.total, 0));
+      const totalQ = round2(ventas.reduce((sum, s) => sum + Number(s.total || 0), 0));
       const cols = [{ key: 'numero', label: 'No.' }, { key: 'fecha', label: 'Fecha' }, { key: 'cliente', label: 'Cliente' }, { key: 'formaPago', label: 'Pago' }, { key: 'total', label: 'Total' }, { key: 'usuario', label: 'Realizada por' }];
       el.innerHTML = `
         <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
@@ -87,13 +104,13 @@ async function render(container) {
       bindExportButtons(el, { title: 'Reporte de ventas', columns: cols, getRows: () => rows, filename: 'reporte_ventas' });
       bindRangeControls(el, (r) => { range = r; draw(); });
     }
-    draw();
+    await draw();
   }
 
   // ---------------- Servicios ----------------
   async function renderServicios(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const orders = await getAll('serviceOrders');
+    const orders = await getAll('serviceOrders', { order: 'fecha', direction: 'desc', max: 3000 });
     const counts = {};
     orders.forEach((o) => o.servicios?.forEach((s) => {
       counts[s.nombre] = counts[s.nombre] || { nombre: s.nombre, veces: 0, total: 0 };
@@ -112,7 +129,7 @@ async function render(container) {
   // ---------------- Compras ----------------
   async function renderCompras(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [purchases, suppliers] = await Promise.all([getAll('purchases', { order: 'fecha', direction: 'desc' }), getAll('suppliers')]);
+    const [purchases, suppliers] = await Promise.all([getAll('purchases', { order: 'fecha', direction: 'desc', max: 2000 }), getAll('suppliers')]);
     let proveedorFiltro = '';
 
     function draw() {
@@ -141,7 +158,7 @@ async function render(container) {
   // ---------------- Clientes ----------------
   async function renderClientes(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const sales = await getAll('sales');
+    const sales = await getAll('sales', { order: 'fecha', direction: 'desc', max: 5000 });
     const agg = {};
     sales.filter((s) => s.clienteTipo === 'registrado').forEach((s) => {
       agg[s.clienteId] = agg[s.clienteId] || { nombre: s.clienteNombre, compras: 0, total: 0 };
@@ -161,9 +178,9 @@ async function render(container) {
   async function renderCaja(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [closings, deposits, returns] = await Promise.all([
-      getAll('cashClosings', { order: 'fecha', direction: 'desc' }),
-      getAll('deposits', { order: 'fecha', direction: 'desc' }),
-      getAll('cashReturns'),
+      getAll('cashClosings', { order: 'fecha', direction: 'desc', max: 1000 }),
+      getAll('deposits', { order: 'fecha', direction: 'desc', max: 1000 }),
+      getAll('cashReturns', { order: 'fecha', direction: 'desc', max: 1000 }),
     ]);
     const pendientes = returns.filter((r) => r.estado === 'pendiente');
     const diferencias = closings.filter((c) => c.estado !== 'cuadrada');
@@ -213,14 +230,16 @@ async function render(container) {
   }
 
   async function renderComisiones(el) {
-    el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [sales, orders, invMovs] = await Promise.all([
-      getAll('sales'), getAll('serviceOrders'), getAll('inventoryMovements'),
-    ]);
     let range = applyRangePreset('mes');
 
-    function draw() {
-      const enRango = (f) => f && f >= range.from && f <= range.to;
+    async function draw() {
+      el.innerHTML = '<div class="empty-state">Cargando…</div>';
+      // Solo se piden los registros del período elegido, no todo el historial.
+      const [sales, orders, invMovs] = await Promise.all([
+        porRango('sales', range),
+        porRango('serviceOrders', range),
+        porRango('inventoryMovements', range, { max: 3000 }),
+      ]);
       const agg = {}; // nombre -> { nombre, ventas, servicios, totalVendido, porPct }
 
       function acumular(nombre, tipo, detalle, monto, pct) {
@@ -230,8 +249,8 @@ async function render(container) {
         a.porPct[pct] = round2((a.porPct[pct] || 0) + monto);
       }
 
-      const ventasPeriodo = sales.filter((s) => enRango(s.fecha));
-      const ordenesPeriodo = orders.filter((o) => enRango(o.fecha));
+      const ventasPeriodo = sales;
+      const ordenesPeriodo = orders;
       const totalVentas = round2(ventasPeriodo.reduce((s, v) => s + v.total, 0));
       const totalServicios = round2(ordenesPeriodo.reduce((s, o) => s + o.total, 0));
       const totalNegocio = round2(totalVentas + totalServicios);
@@ -266,7 +285,7 @@ async function render(container) {
       const totalComisiones = round2(sorted.reduce((s, r) => s + r.comision, 0));
 
       // Productos que salieron para uso propio: NO son venta ni generan comisión.
-      const usoPropio = invMovs.filter((m) => m.motivo === 'uso propio' && enRango(m.fecha));
+      const usoPropio = invMovs.filter((m) => m.motivo === 'uso propio');
       const usoPorPersona = {};
       usoPropio.forEach((m) => {
         const quien = m.usuarioNombre || 'Sin nombre';

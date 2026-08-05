@@ -7,7 +7,7 @@ import { getCurrentUser } from '../auth.js';
 const CATEGORIAS = ['Agua', 'Luz', 'Internet', 'Papelería', 'Limpieza', 'Sueldos', 'Compras menores', 'Otro'];
 
 async function render(container) {
-  const expenses = await getAll('expenses', { order: 'createdAt', direction: 'desc' });
+  const expenses = await getAll('expenses', { order: 'createdAt', direction: 'desc', max: 500 });
 
   const table = renderTable({
     columns: [

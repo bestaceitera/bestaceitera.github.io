@@ -6,7 +6,7 @@ import { escapeHtml, formatQ, formatDateTime, round2, todayISO } from '../utils.
 import { getCurrentUser } from '../auth.js';
 
 async function render(container) {
-  const purchases = await getAll('purchases', { order: 'createdAt', direction: 'desc' });
+  const purchases = await getAll('purchases', { order: 'createdAt', direction: 'desc', max: 300 });
 
   const table = renderTable({
     columns: [
