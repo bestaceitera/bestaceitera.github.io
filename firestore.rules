@@ -42,26 +42,32 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // ---- Catálogos: cualquiera autenticado lee, solo admin escribe ----
+    // ---- Catálogos ----
+    // Marcas y categorías son solo etiquetas: al dar de alta un producto se crean
+    // solas, así que el empleado necesita poder crearlas. Editarlas o borrarlas
+    // sigue siendo del administrador.
     match /categories/{id} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
     }
     match /brands/{id} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
     }
     match /services/{id} {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
 
-    // ---- Productos: admin gestiona el catálogo; empleado puede actualizar
-    //      el stock como parte de una venta/servicio, pero no crear/eliminar ----
+    // ---- Productos ----
+    // El empleado recibe y cuenta mercadería, así que puede dar de alta productos
+    // y ajustar stock. Eliminar del catálogo sigue siendo solo del administrador.
     match /products/{id} {
       allow read: if signedIn();
-      allow update: if signedIn();
-      allow create, delete: if isAdmin();
+      allow create, update: if signedIn();
+      allow delete: if isAdmin();
     }
 
     // ---- Operación diaria: ambos roles leen y escriben ----

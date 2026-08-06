@@ -2,7 +2,8 @@ import { getAll, addRecord, updateRecord, removeRecord } from '../data.js';
 import { renderTable, openModal, closeModal, toast, confirmDialog, formValues } from '../ui.js';
 import { escapeHtml, formatQ } from '../utils.js';
 
-async function render(container) {
+async function render(container, profile) {
+  const esAdmin = profile?.role === 'admin';
   const [items, allCategories, allBrands] = await Promise.all([
     getAll('products', { order: 'nombre' }),
     getAll('categories', { order: 'nombre' }),
@@ -28,7 +29,7 @@ async function render(container) {
           ? `<span class="badge badge-muted">Inactivo</span>` : `<span class="badge badge-success">Activo</span>` },
       { key: 'acciones', label: '', format: (r) => `
           <button class="btn btn-secondary btn-sm" data-edit="${r.id}">Editar</button>
-          <button class="btn btn-danger btn-sm" data-del="${r.id}">Eliminar</button>` },
+          ${esAdmin ? `<button class="btn btn-danger btn-sm" data-del="${r.id}">Eliminar</button>` : ''}` },
     ],
     rows: items,
     searchKeys: ['nombre', 'marca', 'categoria', 'presentacion'],
@@ -50,19 +51,29 @@ async function render(container) {
     const editId = e.target.dataset.edit;
     const delId = e.target.dataset.del;
     if (editId) openForm(items.find((i) => i.id === editId));
-    if (delId) onDelete(delId);
+    if (delId && esAdmin) onDelete(delId);
   });
 
   function datalistOptions(list) {
     return list.map((c) => `<option value="${escapeHtml(c.nombre)}">`).join('');
   }
 
-  /** Si la marca/categoría escrita todavía no existe en su catálogo, se crea sola. */
+  /**
+   * Si la marca/categoría escrita todavía no existe en su catálogo, se crea sola.
+   * Si por permisos no se pudiera crear, el producto se guarda igual con ese
+   * nombre escrito: nunca se pierde el trabajo por un catálogo secundario.
+   */
   async function ensureCatalogo(collectionName, existentes, nombre) {
     const limpio = (nombre || '').trim();
     if (!limpio) return '';
     const yaExiste = existentes.some((c) => c.nombre.toLowerCase() === limpio.toLowerCase());
-    if (!yaExiste) await addRecord(collectionName, { nombre: limpio, activo: true });
+    if (!yaExiste) {
+      try {
+        await addRecord(collectionName, { nombre: limpio, activo: true });
+      } catch (err) {
+        console.warn(`No se pudo agregar "${limpio}" a ${collectionName}:`, err.code || err.message);
+      }
+    }
     return limpio;
   }
 
@@ -180,9 +191,11 @@ async function render(container) {
         else await addRecord('products', data);
         toast('Producto guardado correctamente.', 'success');
         closeModal();
-        render(container);
+        render(container, profile);
       } catch (err) {
-        toast('No se pudo guardar: ' + err.message, 'danger');
+        toast(err.code === 'permission-denied'
+          ? 'Tu usuario todavía no tiene permiso para guardar productos. Avísale al administrador.'
+          : 'No se pudo guardar: ' + err.message, 'danger', 7000);
       }
     });
   }
@@ -193,7 +206,7 @@ async function render(container) {
     try {
       await removeRecord('products', id);
       toast('Producto eliminado.', 'success');
-      render(container);
+      render(container, profile);
     } catch (err) {
       toast('No se pudo eliminar: ' + err.message, 'danger');
     }
