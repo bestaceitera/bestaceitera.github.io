@@ -31,8 +31,8 @@ registerRoute({ hash: 'depositos', label: 'Depósitos bancarios', icon: '🏦', 
 
 registerRoute({ hash: 'inventario', label: 'Inventario', icon: '📦', section: 'Almacén', roles: ['admin'], render: inventario.render });
 registerRoute({ hash: 'productos', label: 'Productos', icon: '🛢️', section: 'Almacén', render: productos.render });
-registerRoute({ hash: 'categorias', label: 'Categorías', icon: '🏷️', section: 'Almacén', roles: ['admin'], render: categorias.render });
-registerRoute({ hash: 'marcas', label: 'Marcas', icon: '⭐', section: 'Almacén', roles: ['admin'], render: marcas.render });
+registerRoute({ hash: 'categorias', label: 'Categorías', icon: '🏷️', section: 'Almacén', render: categorias.render });
+registerRoute({ hash: 'marcas', label: 'Marcas', icon: '⭐', section: 'Almacén', render: marcas.render });
 registerRoute({ hash: 'servicios', label: 'Catálogo de servicios', icon: '🧰', section: 'Almacén', roles: ['admin'], render: servicios.render });
 
 registerRoute({ hash: 'compras', label: 'Compras', icon: '🛒', section: 'Administración', roles: ['admin'], render: compras.render });

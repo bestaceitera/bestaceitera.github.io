@@ -42,19 +42,14 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // ---- Catálogos ----
-    // Marcas y categorías son solo etiquetas: al dar de alta un producto se crean
-    // solas, así que el empleado necesita poder crearlas. Editarlas o borrarlas
-    // sigue siendo del administrador.
+    // ---- Catálogos de productos ----
+    // El personal lleva el control del inventario, así que administra libremente
+    // marcas y categorías (son solo etiquetas para organizar los productos).
     match /categories/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if signedIn();
     }
     match /brands/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if signedIn();
     }
     match /services/{id} {
       allow read: if signedIn();
