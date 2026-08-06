@@ -3,7 +3,6 @@ import { renderTable, openModal, closeModal, toast, confirmDialog, formValues } 
 import { escapeHtml, formatQ } from '../utils.js';
 
 async function render(container, profile) {
-  const esAdmin = profile?.role === 'admin';
   const [items, allCategories, allBrands] = await Promise.all([
     getAll('products', { order: 'nombre' }),
     getAll('categories', { order: 'nombre' }),
@@ -29,7 +28,7 @@ async function render(container, profile) {
           ? `<span class="badge badge-muted">Inactivo</span>` : `<span class="badge badge-success">Activo</span>` },
       { key: 'acciones', label: '', format: (r) => `
           <button class="btn btn-secondary btn-sm" data-edit="${r.id}">Editar</button>
-          ${esAdmin ? `<button class="btn btn-danger btn-sm" data-del="${r.id}">Eliminar</button>` : ''}` },
+          <button class="btn btn-danger btn-sm" data-del="${r.id}">Eliminar</button>` },
     ],
     rows: items,
     searchKeys: ['nombre', 'marca', 'categoria', 'presentacion'],
@@ -51,7 +50,7 @@ async function render(container, profile) {
     const editId = e.target.dataset.edit;
     const delId = e.target.dataset.del;
     if (editId) openForm(items.find((i) => i.id === editId));
-    if (delId && esAdmin) onDelete(delId);
+    if (delId) onDelete(delId);
   });
 
   function datalistOptions(list) {
@@ -201,14 +200,22 @@ async function render(container, profile) {
   }
 
   async function onDelete(id) {
-    const ok = await confirmDialog('¿Eliminar este producto? Esta acción no se puede deshacer.');
+    const p = items.find((i) => i.id === id);
+    const ok = await confirmDialog(
+      `¿Eliminar "${p?.nombre || 'este producto'}" del catálogo?\n\n` +
+      (Number(p?.stock) > 0 ? `Ojo: todavía tiene ${p.stock} unidad(es) en stock.\n` : '') +
+      `Ya no se podrá vender ni buscar. Las ventas viejas que lo incluyen no cambian.\n\n` +
+      `Si solo quieres dejar de venderlo por un tiempo, mejor edítalo y ponlo como "Inactivo".`
+    );
     if (!ok) return;
     try {
       await removeRecord('products', id);
       toast('Producto eliminado.', 'success');
       render(container, profile);
     } catch (err) {
-      toast('No se pudo eliminar: ' + err.message, 'danger');
+      toast(err.code === 'permission-denied'
+        ? 'Tu usuario todavía no tiene permiso para eliminar productos. Avísale al administrador.'
+        : 'No se pudo eliminar: ' + err.message, 'danger', 7000);
     }
   }
 }
