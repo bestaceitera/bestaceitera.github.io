@@ -5,9 +5,7 @@ const {
   query, orderBy, where, onSnapshot, serverTimestamp, runTransaction, Timestamp,
 } = fsApi;
 
-export { serverTimestamp, Timestamp };
-
-export function col(name) {
+function col(name) {
   return collection(db, name);
 }
 
@@ -24,6 +22,21 @@ export async function getAll(name, { order, direction = 'asc', filters = [], max
   if (clauses.length) q = query(col(name), ...clauses);
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * Cuenta los documentos de una colección SIN descargarlos. Firestore lo resuelve
+ * en el servidor y cobra 1 sola lectura, sin importar si hay 10 o 50,000 registros.
+ * Es lo que permite que el dashboard siga instantáneo con los años.
+ */
+export async function countRecords(name) {
+  try {
+    const snap = await fsApi.getCountFromServer(col(name));
+    return snap.data().count;
+  } catch (err) {
+    console.warn(`countRecords(${name})`, err.code || err.message);
+    return 0;
+  }
 }
 
 export async function getById(name, id) {

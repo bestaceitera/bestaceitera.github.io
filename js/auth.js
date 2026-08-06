@@ -6,13 +6,13 @@ const {
   updatePassword, reauthenticateWithCredential, EmailAuthProvider,
 } = authApi;
 
-export const EMAIL_DOMAIN = 'aceitera.local';
+const EMAIL_DOMAIN = 'aceitera.local';
 
-export function usernameToEmail(username) {
+function usernameToEmail(username) {
   return `${username.trim().toLowerCase()}@${EMAIL_DOMAIN}`;
 }
 
-export function emailToUsername(email) {
+function emailToUsername(email) {
   return email.split('@')[0];
 }
 

@@ -1,5 +1,3 @@
-export const IVA_RATE = 0.12;
-
 export function formatQ(amount) {
   const n = Number(amount) || 0;
   return 'Q ' + n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -7,10 +5,6 @@ export function formatQ(amount) {
 
 export function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
-
-export function calcIVA(subtotal) {
-  return round2(subtotal * IVA_RATE);
 }
 
 export function todayISO() {
@@ -22,13 +16,6 @@ export function todayISO() {
 export function nowTimeHM() {
   const d = new Date();
   return d.toTimeString().slice(0, 5);
-}
-
-export function formatDate(value) {
-  if (!value) return '';
-  const d = value?.toDate ? value.toDate() : new Date(value);
-  if (isNaN(d)) return '';
-  return d.toLocaleDateString('es-GT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 export function formatDateTime(value) {
@@ -67,16 +54,8 @@ export function escapeHtml(str) {
     .replaceAll("'", '&#039;');
 }
 
-export function debounce(fn, wait = 300) {
-  let t;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), wait);
-  };
-}
-
 /** Redimensiona y comprime una imagen en el navegador antes de subirla. */
-export function compressImage(file, maxDim = 1000, quality = 0.7) {
+function compressImage(file, maxDim = 1000, quality = 0.7) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const reader = new FileReader();

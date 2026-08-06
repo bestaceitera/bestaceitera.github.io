@@ -156,7 +156,3 @@ export function initRouter(profile) {
   window.addEventListener('hashchange', () => renderRoute());
   renderRoute();
 }
-
-export function navigate(hash) {
-  location.hash = `#${hash}`;
-}

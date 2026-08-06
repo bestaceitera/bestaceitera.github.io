@@ -5,7 +5,7 @@ import { toast } from './ui.js';
  * Exporta un arreglo de filas a PDF (tabla) usando jsPDF + autotable (cargados por CDN en index.html).
  * columns: [{ key, label }]
  */
-export function exportPDF({ title, subtitle = '', columns, rows, filename }) {
+function exportPDF({ title, subtitle = '', columns, rows, filename }) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' });
   doc.setFontSize(14);
@@ -34,7 +34,7 @@ function nombreHojaValido(nombre) {
 }
 
 /** Exporta un arreglo de filas a un archivo .xlsx real usando SheetJS (cargado por CDN). */
-export function exportExcel({ sheetName = 'Datos', columns, rows, filename }) {
+function exportExcel({ sheetName = 'Datos', columns, rows, filename }) {
   const data = rows.map((r) => {
     const obj = {};
     columns.forEach((c) => { obj[c.label] = r[c.key] ?? ''; });

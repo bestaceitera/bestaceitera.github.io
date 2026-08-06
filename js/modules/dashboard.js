@@ -1,4 +1,4 @@
-import { getAll } from '../data.js';
+import { getAll, countRecords } from '../data.js';
 import { formatQ, todayISO, round2 } from '../utils.js';
 import { barChart, lineChart } from '../charts.js';
 import { escapeHtml } from '../utils.js';
@@ -26,15 +26,17 @@ async function render(container, profile) {
   const desdeISO = `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, '0')}-01`;
 
   const [sales, serviceOrders, products, cashMovementsToday, deposits] = await Promise.all([
-    getAll('sales', { filters: [['fecha', '>=', desdeISO]] }),
-    getAll('serviceOrders', { filters: [['fecha', '>=', desdeISO]] }),
+    getAll('sales', { filters: [['fecha', '>=', desdeISO]], max: 4000 }),
+    getAll('serviceOrders', { filters: [['fecha', '>=', desdeISO]], max: 2000 }),
     getAll('products'),
     getAll('cashMovements', { filters: [['fecha', '==', todayISO()]] }),
     getAll('deposits', { order: 'createdAt', direction: 'desc', max: 5 }),
   ]);
-  const purchases = isAdmin ? await getAll('purchases') : [];
-  const customers = isAdmin ? await getAll('customers') : [];
-  const suppliers = isAdmin ? await getAll('suppliers') : [];
+  // Estos tres solo se muestran como cantidad: se cuentan en el servidor en vez
+  // de descargarlos, así el dashboard no se frena aunque haya miles de registros.
+  const [numCompras, numClientes, numProveedores] = isAdmin
+    ? await Promise.all([countRecords('purchases'), countRecords('customers'), countRecords('suppliers')])
+    : [0, 0, 0];
 
   const today = todayISO();
   const ventasHoy = sales.filter((s) => s.fecha === today);
@@ -75,9 +77,9 @@ async function render(container, profile) {
       <div class="stat-card"><div class="label">Efectivo esperado en caja</div><div class="value">${formatQ(efectivoEsperado)}</div></div>
       <div class="stat-card"><div class="label">Productos con stock bajo</div><div class="value" style="color:${lowStock.length ? 'var(--danger)' : 'inherit'}">${lowStock.length}</div></div>
       ${isAdmin ? `
-      <div class="stat-card"><div class="label">Compras registradas</div><div class="value">${purchases.length}</div></div>
-      <div class="stat-card"><div class="label">Clientes registrados</div><div class="value">${customers.length}</div></div>
-      <div class="stat-card"><div class="label">Proveedores</div><div class="value">${suppliers.length}</div></div>
+      <div class="stat-card"><div class="label">Compras registradas</div><div class="value">${numCompras}</div></div>
+      <div class="stat-card"><div class="label">Clientes registrados</div><div class="value">${numClientes}</div></div>
+      <div class="stat-card"><div class="label">Proveedores</div><div class="value">${numProveedores}</div></div>
       <div class="stat-card"><div class="label">Productos activos</div><div class="value">${products.filter((p) => p.estado !== 'inactivo').length}</div></div>
       ` : ''}
     </div>

@@ -54,7 +54,10 @@ const SEED_SERVICES = [
 
 async function seedIfEmpty() {
   try {
-    const [cats, brands, servs] = await Promise.all([getAll('categories'), getAll('brands'), getAll('services')]);
+    // Solo interesa saber si están vacías: se pide 1 documento, no la colección entera.
+    const [cats, brands, servs] = await Promise.all([
+      getAll('categories', { max: 1 }), getAll('brands', { max: 1 }), getAll('services', { max: 1 }),
+    ]);
     if (cats.length === 0) for (const nombre of SEED_CATEGORIES) await addRecord('categories', { nombre, activo: true });
     if (brands.length === 0) for (const nombre of SEED_BRANDS) await addRecord('brands', { nombre, activo: true });
     if (servs.length === 0) for (const s of SEED_SERVICES) await addRecord('services', { ...s, activo: true });
