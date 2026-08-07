@@ -1,4 +1,4 @@
-import { getAll, getById, addRecord, updateRecord, removeRecord, nextFolio } from '../data.js';
+import { getAll, getById, getByDateRange, addRecord, updateRecord, removeRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast, confirmDialog, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
@@ -8,13 +8,26 @@ import { CONSUMIDOR_FINAL } from './clientes.js';
 
 const DIAS_POR_PAGINA = 7;
 
+// El período elegido se guarda fuera de render() para que sobreviva a los
+// refrescos automáticos: si entra una venta desde el mostrador mientras el
+// administrador revisa "Este año", la pantalla se actualiza sin saltar a otro mes.
+let rangoGuardado = null;
+let presetGuardado = 'mes';
+
 async function render(container, profile) {
   const esAdmin = profile?.role === 'admin';
-  const sales = await getAll('sales', { order: 'createdAt', direction: 'desc', max: 300 });
 
+  // Las ventas se piden POR PERÍODO a la base, no "las últimas N". Así el total
+  // que se muestra es siempre el total real de las fechas elegidas, aunque el
+  // negocio lleve años acumulando ventas, y la pantalla solo descarga el período
+  // que se está viendo.
+  let sales = [];
+  let truncado = false;
   let busqueda = '';
   let pagina = 1;
-  let rango = applyRangePreset('todo');
+  let rango = rangoGuardado || applyRangePreset('mes');
+  let cargando = false;
+  let peticion = 0;
 
   container.innerHTML = `
     <div class="card">
@@ -25,10 +38,35 @@ async function render(container, profile) {
       </div>
       <div class="toolbar" id="v-filtros" style="margin-top:10px">${dateRangePresetButtons({ conAyer: true })}</div>
       <div id="v-resumen"></div>
-      <div id="v-dias"></div>
+      <div id="v-dias"><div class="empty-state">Cargando…</div></div>
       <div class="pagination" id="v-paginacion"></div>
     </div>`;
   const card = container.querySelector('.card');
+
+  /**
+   * Pide a la base solo las ventas del período elegido. Si mientras llega la
+   * respuesta el usuario cambia de filtro, la respuesta vieja se descarta: nunca
+   * se pinta un período encima de otro.
+   */
+  async function cargar() {
+    const mio = ++peticion;
+    cargando = true;
+    pintar();
+    try {
+      const r = await getByDateRange('sales', rango, { max: 1500 });
+      if (mio !== peticion) return;
+      // Dentro de un mismo día se ordena por hora: la más reciente arriba.
+      sales = r.filas.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      truncado = r.truncado;
+    } catch (err) {
+      if (mio !== peticion) return;
+      sales = [];
+      truncado = false;
+      toast('No se pudieron cargar las ventas: ' + err.message, 'danger', 6000);
+    } finally {
+      if (mio === peticion) { cargando = false; pintar(); }
+    }
+  }
 
   /** Agrupa las ventas por fecha, de la más reciente a la más antigua. */
   function agruparPorDia(lista) {
@@ -47,18 +85,23 @@ async function render(container, profile) {
       }));
   }
 
+  // Las fechas ya vienen filtradas por la base; aquí solo se aplica el buscador.
   function filtrar() {
     const q = busqueda.trim().toLowerCase();
+    if (!q) return sales;
     return sales.filter((s) => {
-      const fecha = s.fecha || '';
-      if (fecha < rango.from || fecha > rango.to) return false;
-      if (!q) return true;
       const empleados = (s.empleadosComision || []).map((e) => e.empleadoNombre).join(' ');
       return `${s.numero} ${s.clienteNombre || ''} ${empleados}`.toLowerCase().includes(q);
     });
   }
 
   function pintar() {
+    if (cargando) {
+      card.querySelector('#v-resumen').innerHTML = '';
+      card.querySelector('#v-dias').innerHTML = '<div class="empty-state">Cargando…</div>';
+      card.querySelector('#v-paginacion').innerHTML = '';
+      return;
+    }
     const filtradas = filtrar();
     const dias = agruparPorDia(filtradas);
     const totalPaginas = Math.max(1, Math.ceil(dias.length / DIAS_POR_PAGINA));
@@ -67,12 +110,16 @@ async function render(container, profile) {
 
     const totalPeriodo = round2(filtradas.reduce((s, v) => s + Number(v.total || 0), 0));
     const esTodo = rango.from === '2000-01-01';
-    card.querySelector('#v-resumen').innerHTML = filtradas.length ? `
+    card.querySelector('#v-resumen').innerHTML = (filtradas.length ? `
       <div class="periodo-resumen">
         <span>${esTodo ? 'Todas las ventas' : `Del ${escapeHtml(rango.from)} al ${escapeHtml(rango.to)}`}</span>
         <span>${filtradas.length} venta${filtradas.length === 1 ? '' : 's'} en ${dias.length} día${dias.length === 1 ? '' : 's'}
           · <b>Total: ${formatQ(totalPeriodo)}</b></span>
-      </div>` : '';
+      </div>` : '')
+      // Si el período pedido tiene más ventas de las que caben, hay que decirlo:
+      // un total incompleto mostrado como completo desajustaría la contabilidad.
+      + (truncado ? `<div class="alert alert-warning mt-16">Este período tiene más de 1,500 ventas, así que se están mostrando las más recientes.
+          El total de abajo <b>no incluye</b> las más antiguas: elige un período más corto para verlo completo.</div>` : '');
 
     const cont = card.querySelector('#v-dias');
     cont.innerHTML = dias.length ? visibles.map((d) => `
@@ -94,8 +141,8 @@ async function render(container, profile) {
         </table></div>
       </div>`).join('')
       : `<div class="table-empty" style="padding:30px">${
-          busqueda ? 'Ninguna venta coincide con la búsqueda.'
-          : rango.from === '2000-01-01' ? 'Aún no hay ventas registradas.'
+          busqueda ? 'Ninguna venta del período coincide con la búsqueda. Prueba con “Todo” para buscar en todo el historial.'
+          : esTodo ? 'Aún no hay ventas registradas.'
           : 'No hubo ventas en las fechas seleccionadas.'}</div>`;
 
     const pag = card.querySelector('#v-paginacion');
@@ -110,13 +157,17 @@ async function render(container, profile) {
   }
 
   card.querySelector('#v-buscar').addEventListener('input', (e) => { busqueda = e.target.value; pagina = 1; pintar(); });
-  bindRangeControls(card.querySelector('#v-filtros'), (r) => { rango = r; pagina = 1; pintar(); });
+  bindRangeControls(card.querySelector('#v-filtros'), (r, preset) => {
+    rango = r; rangoGuardado = r; presetGuardado = preset;
+    pagina = 1; cargar();
+  }, { activo: presetGuardado });
   card.querySelector('#btn-new').addEventListener('click', openSaleForm);
   card.addEventListener('click', (e) => {
     const id = e.target.dataset.view;
-    if (id) viewDetail(sales.find((s) => s.id === id));
+    const venta = id && sales.find((s) => s.id === id);
+    if (venta) viewDetail(venta);
   });
-  pintar();
+  await cargar();
 
   function viewDetail(s) {
     openModal(`Venta ${s.numero}`, `
@@ -511,11 +562,12 @@ async function render(container, profile) {
         const efectivoEnCaja = formaPago === 'efectivo' ? montoRecibido
           : formaPago === 'mixto' ? (Number($('v-mixto-efectivo').value) || 0)
           : 0;
+        const responsable = empleadosComision.map((e) => e.empleadoNombre).filter(Boolean).join(', ');
         if (efectivoEnCaja > 0) {
-          await addCashMovement({ tipo: 'entrada', categoria: 'venta', monto: efectivoEnCaja, motivo: `Venta ${numero} — ${clienteNombre}`, referenciaId: saleId, fecha: fechaVenta });
+          await addCashMovement({ tipo: 'entrada', categoria: 'venta', monto: efectivoEnCaja, motivo: `Venta ${numero} — ${clienteNombre}`, referenciaId: saleId, fecha: fechaVenta, responsable });
         }
         if (vuelto > 0) {
-          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto venta ${numero}`, referenciaId: saleId, fecha: fechaVenta });
+          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto venta ${numero}`, referenciaId: saleId, fecha: fechaVenta, responsable });
         }
 
         toast(`Venta ${numero} registrada.` + (vuelto > 0 ? ` Vuelto: ${formatQ(vuelto)}` : ''), 'success', 5000);

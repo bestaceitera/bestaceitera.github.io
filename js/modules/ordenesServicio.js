@@ -1,13 +1,23 @@
-import { getAll, getById, addRecord, nextFolio } from '../data.js';
+import { getAll, getById, getByDateRange, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
-import { renderTable, openModal, closeModal, toast, productSearch } from '../ui.js';
+import { renderTable, openModal, closeModal, toast, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
 
+// El período elegido se guarda fuera de render() para que no se pierda cuando la
+// pantalla se refresca sola al llegar un cambio desde otro dispositivo.
+let rangoGuardado = null;
+let presetGuardado = 'mes';
+
 async function render(container) {
-  const orders = await getAll('serviceOrders', { order: 'createdAt', direction: 'desc', max: 300 });
+  // Igual que en Ventas: se piden las órdenes del período elegido, no las
+  // últimas N, para que la lista siga siendo completa y rápida con los años.
+  let rango = rangoGuardado || applyRangePreset('mes');
+  let peticion = 0;
+  const primera = await getByDateRange('serviceOrders', rango, { max: 1500 });
+  let orders = primera.filas;
 
   const table = renderTable({
     columns: [
@@ -21,18 +31,37 @@ async function render(container) {
     ],
     rows: orders,
     searchKeys: ['numero', 'clienteNombre'],
-    emptyMessage: 'Aún no hay órdenes de servicio.',
+    emptyMessage: 'No hubo órdenes de servicio en las fechas seleccionadas.',
     extraToolbar: `<button class="btn btn-primary btn-sm" id="btn-new">+ Nueva orden de servicio</button>`,
   });
 
-  container.innerHTML = `<div class="card">${table.html}</div>`;
+  container.innerHTML = `
+    <div class="toolbar" id="os-fechas" style="margin-bottom:10px">${dateRangePresetButtons({ conAyer: true })}</div>
+    <div class="card">${table.html}</div>`;
   const card = container.querySelector('.card');
-  table.mount(card);
+  const tabla = table.mount(card);
+
+  bindRangeControls(container.querySelector('#os-fechas'), async (r, preset) => {
+    const mio = ++peticion;
+    rango = r; rangoGuardado = r; presetGuardado = preset;
+    tabla.refresh([]);
+    try {
+      const res = await getByDateRange('serviceOrders', rango, { max: 1500 });
+      if (mio !== peticion) return;
+      orders = res.filas;
+    } catch (err) {
+      if (mio !== peticion) return;
+      orders = [];
+      toast('No se pudieron cargar las órdenes: ' + err.message, 'danger', 6000);
+    }
+    tabla.refresh(orders);
+  }, { activo: presetGuardado });
 
   card.querySelector('#btn-new').addEventListener('click', openOrderForm);
   card.addEventListener('click', (e) => {
     const id = e.target.dataset.view;
-    if (id) viewDetail(orders.find((o) => o.id === id));
+    const orden = id && orders.find((o) => o.id === id);
+    if (orden) viewDetail(orden);
   });
 
   function viewDetail(o) {
@@ -336,11 +365,12 @@ async function render(container) {
         }
         // Solo el efectivo físico recibido entra al arqueo de caja (tarjeta/transferencia no).
         const efectivoEnCaja = formaPago === 'efectivo' ? recibido : formaPago === 'mixto' ? efectivoMixto : 0;
+        const responsable = empleadosOrden.map((e) => e.empleadoNombre).filter(Boolean).join(', ');
         if (efectivoEnCaja > 0) {
-          await addCashMovement({ tipo: 'entrada', categoria: 'servicio', monto: efectivoEnCaja, motivo: `Orden ${numero} — ${clienteNombre}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO() });
+          await addCashMovement({ tipo: 'entrada', categoria: 'servicio', monto: efectivoEnCaja, motivo: `Orden ${numero} — ${clienteNombre}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO(), responsable });
         }
         if (vuelto > 0) {
-          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto orden ${numero}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO() });
+          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto orden ${numero}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO(), responsable });
         }
         toast('Orden de servicio guardada.', 'success');
         closeModal();

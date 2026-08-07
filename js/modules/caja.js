@@ -1,6 +1,6 @@
-import { getAll, addRecord, updateRecord } from '../data.js';
+import { getAll, getByDateRange, addRecord, updateRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
-import { renderTable, openModal, closeModal, toast, confirmDialog, formValues } from '../ui.js';
+import { renderTable, openModal, closeModal, toast, confirmDialog, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, formatDateTime, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 
@@ -18,25 +18,18 @@ async function getTodayMovements() {
 }
 
 /**
- * Devuelve una función que dice QUIÉN hizo el movimiento. Si viene de una venta u
- * orden, muestra al empleado que la realizó (no la cuenta con la que se registró,
- * que al ser compartida diría siempre lo mismo).
+ * Dice QUIÉN hizo el movimiento: si viene de una venta u orden, el empleado que
+ * la realizó (no la cuenta con la que se registró, que al ser compartida diría
+ * siempre lo mismo).
+ *
+ * El nombre viene guardado dentro del propio movimiento. Antes se descargaban
+ * las últimas 400 ventas y 400 órdenes en CADA apertura de Caja solo para
+ * averiguarlo: 800 lecturas repetidas, y además fallaba con los movimientos más
+ * viejos que esas 400. Los movimientos anteriores a este cambio no traen el
+ * campo, así que para esos se usa la cuenta que lo registró.
  */
-async function crearResolverResponsable() {
-  const [sales, orders] = await Promise.all([
-    getAll('sales', { order: 'createdAt', direction: 'desc', max: 400 }),
-    getAll('serviceOrders', { order: 'createdAt', direction: 'desc', max: 400 }),
-  ]);
-  const porReferencia = new Map();
-  sales.forEach((s) => {
-    const n = (s.empleadosComision || []).map((e) => e.empleadoNombre).filter(Boolean).join(', ');
-    if (n) porReferencia.set(s.id, n);
-  });
-  orders.forEach((o) => {
-    const n = (o.empleados || []).map((e) => e.empleadoNombre).filter(Boolean).join(', ');
-    if (n) porReferencia.set(o.id, n);
-  });
-  return (m) => porReferencia.get(m.referenciaId) || m.usuarioNombre || '';
+function responsableDe(m) {
+  return m.responsable || m.usuarioNombre || '';
 }
 
 function computeExpected(movements) {
@@ -83,7 +76,7 @@ async function render(container) {
   // ---------------- Control de efectivo ----------------
   async function renderControl(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [movements, responsableDe] = await Promise.all([getTodayMovements(), crearResolverResponsable()]);
+    const movements = await getTodayMovements();
     const stats = computeExpected(movements);
     const hasFondo = movements.some((m) => m.categoria === 'fondo_inicial');
 
@@ -351,10 +344,12 @@ async function render(container) {
   // ---------------- Historial completo ----------------
   async function renderHistorial(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [movements, responsableDe] = await Promise.all([
-      getAll('cashMovements', { order: 'createdAt', direction: 'desc', max: 500 }),
-      crearResolverResponsable(),
-    ]);
+    // El historial se pide por período (no "los últimos 500"), así que buscar los
+    // movimientos de un mes de hace años los muestra todos, no un recorte.
+    let rango = applyRangePreset('mes');
+    let peticion = 0;
+    const primera = await getByDateRange('cashMovements', rango, { max: 1500 });
+    let movements = primera.filas;
     const table = renderTable({
       columns: [
         { key: 'createdAt', label: 'Fecha/hora', format: (r) => formatDateTime(r.createdAt) },
@@ -365,12 +360,29 @@ async function render(container) {
         { key: 'usuarioNombre', label: 'Responsable', format: (r) => escapeHtml(responsableDe(r)) },
       ],
       rows: movements,
-      searchKeys: ['motivo', 'usuarioNombre'],
+      searchKeys: ['motivo', 'usuarioNombre', 'responsable'],
       pageSize: 15,
-      emptyMessage: 'Sin movimientos registrados.',
+      emptyMessage: 'No hubo movimientos de caja en las fechas seleccionadas.',
     });
-    el.innerHTML = `<div class="card">${table.html}</div>`;
-    table.mount(el.querySelector('.card'));
+    el.innerHTML = `
+      <div class="toolbar" id="cj-fechas" style="margin-bottom:10px">${dateRangePresetButtons({ conAyer: true })}</div>
+      <div class="card">${table.html}</div>`;
+    const tabla = table.mount(el.querySelector('.card'));
+    bindRangeControls(el.querySelector('#cj-fechas'), async (r) => {
+      const mio = ++peticion;
+      rango = r;
+      tabla.refresh([]);
+      try {
+        const res = await getByDateRange('cashMovements', rango, { max: 1500 });
+        if (mio !== peticion) return;
+        movements = res.filas;
+      } catch (err) {
+        if (mio !== peticion) return;
+        movements = [];
+        toast('No se pudo cargar el historial: ' + err.message, 'danger', 6000);
+      }
+      tabla.refresh(movements);
+    }, { activo: 'mes' });
   }
 }
 

@@ -1,11 +1,22 @@
-import { getAll, addRecord } from '../data.js';
+import { getAll, getByDateRange, addRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
-import { renderTable, openModal, closeModal, toast, formValues } from '../ui.js';
+import { renderTable, openModal, closeModal, toast, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, compressImageForFirestore, todayISO, nowTimeHM } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 
+// El período elegido se guarda fuera de render() para que no se pierda cuando la
+// pantalla se refresca sola al llegar un cambio desde otro dispositivo.
+let rangoGuardado = null;
+let presetGuardado = 'mes';
+
 async function render(container) {
-  const deposits = await getAll('deposits', { order: 'createdAt', direction: 'desc', max: 200 });
+  // Cada depósito lleva dentro la foto del comprobante, así que traer "los
+  // últimos 200" significaría descargar decenas de megas. Se piden solo los del
+  // período que se está viendo: un mes de depósitos pesa poco y carga al instante.
+  let rango = rangoGuardado || applyRangePreset('mes');
+  let peticion = 0;
+  const primera = await getByDateRange('deposits', rango, { max: 300 });
+  let deposits = primera.filas;
 
   const table = renderTable({
     columns: [
@@ -18,13 +29,31 @@ async function render(container) {
     ],
     rows: deposits,
     searchKeys: ['banco', 'boleta', 'usuarioNombre', 'observaciones'],
-    emptyMessage: 'Aún no hay depósitos registrados.',
+    emptyMessage: 'No hubo depósitos en las fechas seleccionadas.',
     extraToolbar: `<button class="btn btn-primary btn-sm" id="btn-new">+ Registrar depósito</button>`,
   });
 
-  container.innerHTML = `<div class="card">${table.html}</div>`;
+  container.innerHTML = `
+    <div class="toolbar" id="dep-fechas" style="margin-bottom:10px">${dateRangePresetButtons({ conAyer: true })}</div>
+    <div class="card">${table.html}</div>`;
   const card = container.querySelector('.card');
-  table.mount(card);
+  const tabla = table.mount(card);
+
+  bindRangeControls(container.querySelector('#dep-fechas'), async (r, preset) => {
+    const mio = ++peticion;
+    rango = r; rangoGuardado = r; presetGuardado = preset;
+    tabla.refresh([]);
+    try {
+      const res = await getByDateRange('deposits', rango, { max: 300 });
+      if (mio !== peticion) return;
+      deposits = res.filas;
+    } catch (err) {
+      if (mio !== peticion) return;
+      deposits = [];
+      toast('No se pudieron cargar los depósitos: ' + err.message, 'danger', 6000);
+    }
+    tabla.refresh(deposits);
+  }, { activo: presetGuardado });
 
   card.querySelector('#btn-new').addEventListener('click', openDepositForm);
   card.addEventListener('click', (e) => {

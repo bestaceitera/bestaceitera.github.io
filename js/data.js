@@ -39,6 +39,26 @@ export async function countRecords(name) {
   }
 }
 
+/**
+ * Trae SOLO los documentos cuyo campo de fecha cae dentro del período pedido.
+ * Firestore resuelve el rango en el servidor, así que la pantalla tarda lo mismo
+ * el primer día que dentro de diez años: se descarga el mes que se está viendo,
+ * no todo el historial. Como el filtro y el orden usan el MISMO campo, Firestore
+ * no pide crear ningún índice extra.
+ *
+ * Devuelve { filas, truncado }: `truncado` avisa que el período elegido tiene más
+ * registros de los que se pidieron, para no mostrar totales incompletos como si
+ * fueran completos.
+ */
+export async function getByDateRange(name, { from, to }, { max = 1500, campo = 'fecha' } = {}) {
+  const filters = [];
+  if (from && from > '2000-01-01') filters.push([campo, '>=', from]);
+  if (to && to < '2100-01-01') filters.push([campo, '<=', to]);
+  const filas = await getAll(name, { filters, order: campo, direction: 'desc', max: max + 1 });
+  const truncado = filas.length > max;
+  return { filas: truncado ? filas.slice(0, max) : filas, truncado };
+}
+
 export async function getById(name, id) {
   const snap = await getDoc(doc(db, name, id));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;

@@ -40,6 +40,11 @@ document.getElementById('modal-close')?.addEventListener('click', closeModal);
 document.getElementById('modal-backdrop')?.addEventListener('click', (e) => {
   if (e.target.id === 'modal-backdrop') closeModal();
 });
+// Escape cierra el formulario abierto: es lo que cualquiera espera al equivocarse
+// de botón, y evita quedarse atrapado en una pantalla en un celular.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalAbierto()) closeModal();
+});
 
 export function confirmDialog(message) {
   return new Promise((resolve) => {
@@ -79,9 +84,15 @@ export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emp
     const pageRows = data.slice(start, start + pageSize);
 
     const thead = `<thead><tr>${columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('')}</tr></thead>`;
+    // Cuando la búsqueda no encuentra nada NO se puede decir "aún no hay
+    // registros": los hay, solo que ninguno coincide. Decir lo contrario hace
+    // creer que se perdieron los datos.
+    const vacio = state.query.trim()
+      ? `No se encontró nada con “${escapeHtml(state.query.trim())}”. Revisa cómo está escrito o borra la búsqueda para ver todo.`
+      : escapeHtml(emptyMessage);
     const tbody = pageRows.length
       ? `<tbody>${pageRows.map((r) => `<tr>${columns.map((c) => `<td>${c.format ? c.format(r) : escapeHtml(r[c.key] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>`
-      : `<tbody><tr><td colspan="${columns.length}" class="table-empty">${escapeHtml(emptyMessage)}</td></tr></tbody>`;
+      : `<tbody><tr><td colspan="${columns.length}" class="table-empty">${vacio}</td></tr></tbody>`;
 
     const wrap = container.querySelector('.table-wrap');
     wrap.innerHTML = `<table>${thead}${tbody}</table>`;
@@ -164,14 +175,28 @@ export function dateRangePresetButtons({ conAyer = false } = {}) {
   `;
 }
 
-export function bindRangeControls(el, setRange) {
-  el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => setRange(applyRangePreset(b.dataset.range))));
+export function bindRangeControls(el, setRange, { activo = null } = {}) {
+  // El botón del período elegido queda resaltado: de un vistazo se sabe qué se
+  // está viendo, sin tener que leer las fechas.
+  const marcar = (valor) => el.querySelectorAll('[data-range]').forEach((b) => {
+    const encendido = b.dataset.range === valor;
+    b.classList.toggle('btn-primary', encendido);
+    b.classList.toggle('btn-secondary', !encendido);
+  });
+  if (activo) marcar(activo);
+  // setRange recibe también el nombre del preset para que la pantalla pueda
+  // recordar cuál estaba elegido y no perderlo al refrescarse sola.
+  el.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => {
+    marcar(b.dataset.range);
+    setRange(applyRangePreset(b.dataset.range), b.dataset.range);
+  }));
   el.querySelector('[data-apply]')?.addEventListener('click', () => {
     const from = el.querySelector('[data-from]').value;
     const to = el.querySelector('[data-to]').value;
     if (!from || !to) { toast('Elige las dos fechas.', 'info'); return; }
     if (from > to) { toast('La fecha inicial no puede ser mayor que la final.', 'danger'); return; }
-    setRange({ from, to });
+    marcar(null); // fechas a mano: ningún preset está activo
+    setRange({ from, to }, null);
   });
 }
 
