@@ -1,4 +1,4 @@
-import { getAll } from '../data.js';
+import { getAll, addRecord } from '../data.js';
 import { renderTable, openModal, closeModal, toast, productSearch } from '../ui.js';
 import { formatQ, formatDateTime, escapeHtml, round2, todayISO } from '../utils.js';
 import { applyStockChange } from './inventoryCore.js';
@@ -21,7 +21,7 @@ async function render(container) {
       { key: 'motivo', label: 'Motivo', format: (r) => r.motivo === 'uso propio'
           ? `<span class="badge badge-info">Uso propio</span>` : escapeHtml(r.motivo || '') },
       { key: 'cantidad', label: 'Cantidad' },
-      { key: 'stockResultante', label: 'Stock resultante' },
+      { key: 'stockResultante', label: 'Stock resultante', format: (r) => r.stockResultante === null || r.stockResultante === undefined ? '<span class="text-muted">—</span>' : r.stockResultante },
       { key: 'usuarioNombre', label: 'Usuario' },
       { key: 'nota', label: 'Nota' },
     ],
@@ -56,7 +56,6 @@ async function render(container) {
    */
   function openUsoPropioForm() {
     const activos = products.filter((p) => p.estado !== 'inactivo' && Number(p.stock) > 0);
-    if (!activos.length) { toast('No hay productos con stock disponible.', 'danger'); return; }
     const user = getCurrentUser();
     const carrito = [];
     const buscador = productSearch(activos, { id: 'up-producto', label: 'Buscar producto', clearOnSelect: true });
@@ -76,6 +75,18 @@ async function render(container) {
 
       <div class="section-title">Productos que salen</div>
       ${buscador.html}
+      <button type="button" class="btn btn-secondary btn-block mt-16" id="up-libre-toggle">
+        + Sacar algo que no está en la lista (filtro, etc.)
+      </button>
+      <div class="libre-box" id="up-libre" hidden>
+        <label>¿Qué sacaste?
+          <input id="up-libre-desc" autocomplete="off" placeholder="ej. Filtro de aire Autox L200">
+        </label>
+        <p class="text-muted" style="font-size:12.5px;margin:6px 0 10px">
+          Como no está en el catálogo, no descuenta stock: queda solo como constancia de que salió.
+        </p>
+        <button type="button" class="btn btn-primary btn-block" id="up-libre-add">Agregar a la salida</button>
+      </div>
       <div id="up-lista" class="text-muted mt-16">Sin productos. Búscalos arriba y tócalos para agregarlos.</div>
 
       <div class="modal-actions">
@@ -100,6 +111,26 @@ async function render(container) {
       },
     });
 
+    // Artículo que no está en el catálogo: se anota igual para dejar constancia,
+    // aunque no haya stock que descontar.
+    const panelLibre = $('up-libre');
+    $('up-libre-toggle').addEventListener('click', () => {
+      panelLibre.hidden = !panelLibre.hidden;
+      if (!panelLibre.hidden) $('up-libre-desc').focus();
+    });
+    function agregarLibre() {
+      const desc = $('up-libre-desc').value.trim();
+      if (!desc) { toast('Escribe qué sacaste.', 'danger'); $('up-libre-desc').focus(); return; }
+      carrito.push({ productoId: null, libre: true, nombre: desc, cantidad: 1, precioCompra: 0 });
+      $('up-libre-desc').value = '';
+      $('up-libre-desc').focus();
+      renderLista();
+    }
+    $('up-libre-add').addEventListener('click', agregarLibre);
+    $('up-libre-desc').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); agregarLibre(); }
+    });
+
     function renderLista() {
       const list = $('up-lista');
       if (!carrito.length) {
@@ -109,13 +140,13 @@ async function render(container) {
       const costo = round2(carrito.reduce((s, i) => s + i.cantidad * i.precioCompra, 0));
       list.innerHTML = carrito.map((i, idx) => `
         <div class="cart-line">
-          <span class="cart-name">${escapeHtml(i.nombre)}</span>
+          <span class="cart-name">${escapeHtml(i.nombre)}${i.libre ? ' <span class="badge badge-info">no descuenta stock</span>' : ''}</span>
           <span class="cart-qty">
             <button type="button" class="btn btn-secondary btn-sm" data-dec="${idx}">−</button>
             <input type="number" min="1" step="1" value="${i.cantidad}" data-qty="${idx}">
             <button type="button" class="btn btn-secondary btn-sm" data-inc="${idx}">+</button>
           </span>
-          <span class="text-muted" style="font-size:12.5px">de ${i.stock}</span>
+          <span class="text-muted" style="font-size:12.5px">${i.libre ? '' : 'de ' + i.stock}</span>
           <button type="button" class="btn btn-danger btn-sm" data-rm="${idx}">✕</button>
         </div>`).join('')
         + `<p class="text-right mt-16 text-muted">Costo de lo que sale: <b>${formatQ(costo)}</b></p>`;
@@ -123,7 +154,7 @@ async function render(container) {
       const setQty = (idx, valor) => {
         const item = carrito[idx];
         const n = Math.max(1, Math.floor(Number(valor) || 1));
-        if (n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
+        if (!item.libre && n > item.stock) { toast(`Solo hay ${item.stock} de ${item.nombre}.`, 'danger'); item.cantidad = item.stock; }
         else item.cantidad = n;
         renderLista();
       };
@@ -145,13 +176,25 @@ async function render(container) {
       btn.textContent = 'Guardando…';
       try {
         const nota = $('up-nota').value.trim();
+        const fecha = $('up-fecha').value || todayISO();
         for (const item of carrito) {
-          await applyStockChange(item.productoId, -item.cantidad, {
-            motivo: 'uso propio',
-            referenciaId: null,
-            usuario: { uid: user?.uid, nombre: responsable },
-            extra: { nota, fecha: $('up-fecha').value || todayISO() },
-          });
+          if (item.productoId) {
+            await applyStockChange(item.productoId, -item.cantidad, {
+              motivo: 'uso propio',
+              referenciaId: null,
+              usuario: { uid: user?.uid, nombre: responsable },
+              extra: { nota, fecha },
+            });
+          } else {
+            // No está en el catálogo: no hay stock que mover, solo queda la constancia.
+            await addRecord('inventoryMovements', {
+              productoId: null, libre: true, productoNombre: item.nombre,
+              tipo: 'salida', motivo: 'uso propio', cantidad: item.cantidad,
+              stockResultante: null, referenciaId: null,
+              usuarioId: user?.uid || null, usuarioNombre: responsable,
+              nota, fecha,
+            });
+          }
         }
         toast('Salida registrada. No afecta la caja.', 'success', 4500);
         closeModal();
