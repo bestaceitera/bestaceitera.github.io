@@ -32,18 +32,43 @@ function responsableDe(m) {
   return m.responsable || m.usuarioNombre || '';
 }
 
+/**
+ * El VUELTO no es un egreso ni dinero que entró.
+ *
+ * Si el cliente paga una venta de Q90 con un billete de Q100, se registra que
+ * entraron Q100 y que salieron Q10. Sumado en bruto, la pantalla decía
+ * "Ingresos Q100 · Egresos Q10", cuando lo que de verdad entró al cajón fueron
+ * Q90 y no se gastó nada. El total esperado siempre estuvo bien (Q100 − Q10 =
+ * Q90), pero los dos números de arriba no cuadraban con lo que uno cuenta a
+ * mano. Por eso el vuelto se descuenta de lo que entró, en vez de mostrarse
+ * como si fuera un gasto del negocio.
+ */
 function computeExpected(movements) {
   const fondoInicial = movements.filter((m) => m.categoria === 'fondo_inicial').reduce((s, m) => s + m.monto, 0);
-  const entradas = movements.filter((m) => m.tipo === 'entrada' && m.categoria !== 'fondo_inicial');
-  const salidas = movements.filter((m) => m.tipo === 'salida');
-  const totalEntradas = round2(entradas.reduce((s, m) => s + m.monto, 0));
-  const totalSalidas = round2(salidas.reduce((s, m) => s + m.monto, 0));
-  const esperado = round2(fondoInicial + totalEntradas - totalSalidas);
   const byCat = (cat) => round2(movements.filter((m) => m.categoria === cat).reduce((s, m) => s + m.monto, 0));
+  const vueltos = byCat('vuelto');
+
+  const entradasBrutas = round2(movements
+    .filter((m) => m.tipo === 'entrada' && m.categoria !== 'fondo_inicial')
+    .reduce((s, m) => s + m.monto, 0));
+  const salidasBrutas = round2(movements
+    .filter((m) => m.tipo === 'salida')
+    .reduce((s, m) => s + m.monto, 0));
+
+  // Lo que realmente entró y lo que realmente salió del negocio.
+  const totalEntradas = round2(entradasBrutas - vueltos);
+  const totalSalidas = round2(salidasBrutas - vueltos);
+  const esperado = round2(fondoInicial + totalEntradas - totalSalidas);
+
   return {
     fondoInicial, totalEntradas, totalSalidas, esperado,
-    ventas: byCat('venta'), servicios: byCat('servicio'), otrosIngresos: byCat('abono') + byCat('otro_ingreso'),
-    compras: byCat('compra'), gastos: byCat('gasto'), depositos: byCat('deposito'), vueltos: byCat('vuelto'),
+    // El desglose del cuadre va en BRUTO a propósito: ahí el vuelto aparece en
+    // su propia línea ("− Vueltos entregados"), así que restarlo aquí también
+    // lo descontaría dos veces. Un vuelto puede venir de una venta o de una
+    // orden de servicio, y en el desglose se ve de dónde salió.
+    ventas: byCat('venta'), servicios: byCat('servicio'),
+    otrosIngresos: byCat('abono') + byCat('otro_ingreso'),
+    compras: byCat('compra'), gastos: byCat('gasto'), depositos: byCat('deposito'), vueltos,
     retiros: byCat('retiro'), devoluciones: byCat('devolucion'),
   };
 }
@@ -83,8 +108,8 @@ async function render(container) {
     el.innerHTML = `
       <div class="grid grid-4">
         <div class="stat-card"><div class="label">Fondo inicial</div><div class="value">${formatQ(stats.fondoInicial)}</div></div>
-        <div class="stat-card"><div class="label">Ingresos efectivo hoy</div><div class="value" style="color:var(--success)">${formatQ(stats.totalEntradas)}</div></div>
-        <div class="stat-card"><div class="label">Egresos hoy</div><div class="value" style="color:var(--danger)">${formatQ(stats.totalSalidas)}</div></div>
+        <div class="stat-card"><div class="label">Entró en efectivo hoy${stats.vueltos > 0 ? ' <span class="text-muted" style="font-weight:400">(ya sin vueltos)</span>' : ''}</div><div class="value" style="color:var(--success)">${formatQ(stats.totalEntradas)}</div></div>
+        <div class="stat-card"><div class="label">Salió de caja hoy</div><div class="value" style="color:var(--danger)">${formatQ(stats.totalSalidas)}</div></div>
         <div class="stat-card"><div class="label">Dinero esperado en caja</div><div class="value">${formatQ(stats.esperado)}</div></div>
       </div>
       ${!hasFondo ? `

@@ -199,12 +199,13 @@ async function render(container) {
     for (const m of movimientos) {
       const dia = m.fecha || '';
       if (!dia) continue;
-      if (!dias.has(dia)) dias.set(dia, { fecha: dia, cajaChica: 0, tuvoFondo: false, entradas: 0, salidas: 0, depositado: 0, detalle: {} });
+      if (!dias.has(dia)) dias.set(dia, { fecha: dia, cajaChica: 0, tuvoFondo: false, entradas: 0, salidas: 0, vueltos: 0, depositado: 0, detalle: {} });
       const d = dias.get(dia);
       const monto = Number(m.monto) || 0;
       if (m.categoria === 'fondo_inicial') { d.cajaChica += monto; d.tuvoFondo = true; continue; }
       if (ENTRADAS.includes(m.categoria)) d.entradas += monto;
       else if (SALIDAS.includes(m.categoria)) d.salidas += monto;
+      if (m.categoria === 'vuelto') d.vueltos += monto;
       if (m.categoria === 'deposito') d.depositado += monto;
       d.detalle[m.categoria] = round2((d.detalle[m.categoria] || 0) + monto);
     }
@@ -212,6 +213,11 @@ async function render(container) {
       .map((d) => {
         const cajaChica = d.tuvoFondo ? round2(d.cajaChica) : CAJA_CHICA_POR_DEFECTO;
         const enCaja = round2(cajaChica + d.entradas - d.salidas);
+        // El vuelto no es dinero que entró ni que se gastó: es parte del billete
+        // del cliente que se le regresó. Se descuenta de ambos lados para que las
+        // columnas coincidan con lo que se cuenta a mano. El total no cambia.
+        d.entradas = round2(d.entradas - d.vueltos);
+        d.salidas = round2(d.salidas - d.vueltos);
         return { ...d, cajaChica, enCaja, aDepositar: round2(Math.max(0, enCaja - cajaChica)) };
       })
       .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
