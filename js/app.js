@@ -168,6 +168,24 @@ function init() {
   });
 }
 
+/**
+ * Muestra u oculta el aviso de falta de internet.
+ *
+ * Importa que sea visible: con la copia local, sin señal las pantallas siguen
+ * mostrando datos, y sin este aviso el usuario creería que está viendo lo de
+ * ahora. También le dice por qué no puede registrar una venta en ese momento
+ * (el correlativo V1, V2… necesita hablar con el servidor).
+ */
+function vigilarConexion() {
+  const aviso = document.getElementById('sin-conexion');
+  if (!aviso) return;
+  const pintar = () => { aviso.hidden = navigator.onLine; };
+  window.addEventListener('online', pintar);
+  window.addEventListener('offline', pintar);
+  pintar();
+}
+
 // app.js es un módulo (carga diferida): el DOM ya está listo cuando esto se ejecuta,
 // así que no hace falta (ni conviene) esperar 'DOMContentLoaded' aquí.
+vigilarConexion();
 init();

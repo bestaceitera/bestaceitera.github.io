@@ -93,6 +93,32 @@ export function listen(name, callback, { order, direction = 'asc', filters = [],
   }, (err) => console.error(`listen(${name})`, err));
 }
 
+/**
+ * Suma `delta` al stock de un producto DENTRO de una transacción.
+ *
+ * Es indispensable que sea transaccional: si dos personas venden a la vez la
+ * última unidad desde dos dispositivos, leer-restar-guardar por separado deja
+ * que ambas ventas pasen y solo se descuente una (la segunda escritura pisa a la
+ * primera), quedando vendido algo que ya no existe. Firestore reintenta la
+ * transacción cuando detecta que el dato cambió, así que la segunda venta vuelve
+ * a leer el stock ya rebajado y se rechaza como debe ser.
+ */
+export async function adjustStockAtomic(productId, delta) {
+  const ref = doc(db, 'products', productId);
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('Producto no encontrado.');
+    const producto = snap.data();
+    const anterior = Number(producto.stock || 0);
+    const nuevoStock = anterior + delta;
+    if (nuevoStock < 0) {
+      throw new Error(`No hay suficiente stock de ${producto.nombre} (quedan ${anterior}).`);
+    }
+    tx.update(ref, { stock: nuevoStock, updatedAt: serverTimestamp() });
+    return { nombre: producto.nombre, nuevoStock };
+  });
+}
+
 /** Incrementa de forma atómica un contador y devuelve el folio como string con padding. */
 export async function nextFolio(counterName, { prefix = '', pad = 6 } = {}) {
   const ref = doc(db, 'counters', counterName);

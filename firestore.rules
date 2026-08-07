@@ -1,6 +1,12 @@
 // ============================================================================
 // Reglas de seguridad de Firestore para el Sistema de Gestión de Aceitera.
 // Cópialas TAL CUAL en: Firebase Console → Firestore Database → Reglas → Publicar.
+//
+// Idea de fondo: el empleado REGISTRA la operación del día (vende, cobra,
+// deposita, recibe producto), pero NO puede borrar ni modificar lo ya registrado.
+// Eso es de administrador. Ocultar un botón en la pantalla no basta: sin estas
+// reglas, cualquiera con la cuenta de empleado podría borrar una venta desde el
+// navegador y descuadrar la contabilidad sin dejar rastro.
 // ============================================================================
 rules_version = '2';
 
@@ -15,6 +21,11 @@ service cloud.firestore {
       return signedIn() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // El empleado deja constancia; corregir o borrar es del administrador.
+    function soloRegistrar() {
+      return signedIn();
     }
 
     // ---- Perfiles de usuario ----
@@ -51,43 +62,65 @@ service cloud.firestore {
     match /brands/{id} {
       allow read, create, update, delete: if signedIn();
     }
+    // El catálogo de servicios y sus precios los define el administrador.
     match /services/{id} {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
 
     // ---- Productos ----
-    // El personal lleva el control del inventario: recibe, cuenta y depura el
-    // catálogo, así que puede crear, actualizar y eliminar productos.
+    // El personal recibe, cuenta y depura el catálogo: crea, actualiza y elimina.
     match /products/{id} {
       allow read, create, update, delete: if signedIn();
     }
 
-    // ---- Operación diaria: ambos roles leen y escriben ----
+    // ---- Clientes ----
+    // El mostrador los da de alta y corrige datos (teléfono, NIT) al facturar.
     match /customers/{id} {
-      allow read, write: if signedIn();
+      allow read, create, update, delete: if signedIn();
     }
+
+    // ---- Ventas y órdenes: se registran, no se borran ----
+    // Anular una venta devuelve stock y mueve la caja: es decisión del dueño.
     match /sales/{id} {
-      allow read, write: if signedIn();
+      allow read, create: if soloRegistrar();
+      allow update, delete: if isAdmin();
     }
     match /serviceOrders/{id} {
-      allow read, write: if signedIn();
+      allow read, create: if soloRegistrar();
+      allow update, delete: if isAdmin();
     }
+
+    // ---- Rastro de inventario y de dinero: solo se agrega ----
+    // Son el historial que respalda el stock y el arqueo. Si se pudieran editar o
+    // borrar, dejarían de servir como respaldo de nada.
     match /inventoryMovements/{id} {
-      allow read, write: if signedIn();
+      allow read, create: if soloRegistrar();
+      allow update, delete: if isAdmin();
     }
     match /cashMovements/{id} {
-      allow read, write: if signedIn();
+      allow read, create: if soloRegistrar();
+      allow update, delete: if isAdmin();
     }
     match /cashClosings/{id} {
-      allow read, write: if signedIn();
-    }
-    match /cashReturns/{id} {
-      allow read, write: if signedIn();
+      allow read, create: if soloRegistrar();
+      allow update, delete: if isAdmin();
     }
     match /deposits/{id} {
-      allow read, write: if signedIn();
+      allow read, create: if soloRegistrar();
+      allow update, delete: if isAdmin();
     }
+
+    // ---- Retiros pendientes de devolver ----
+    // El empleado marca la devolución cuando repone el dinero, así que necesita
+    // actualizar; borrar el registro sigue siendo del administrador.
+    match /cashReturns/{id} {
+      allow read, create, update: if soloRegistrar();
+      allow delete: if isAdmin();
+    }
+
+    // ---- Correlativos de folios (V1, V2, …) ----
+    // Se incrementan dentro de una transacción al registrar una venta u orden.
     match /counters/{id} {
       allow read, write: if signedIn();
     }

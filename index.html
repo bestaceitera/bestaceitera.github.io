@@ -40,6 +40,12 @@
         <h2 id="page-title">Dashboard</h2>
         <div id="stock-alert-badge" class="alert-badge" hidden></div>
       </header>
+      <!-- Aviso de que no hay internet: sin él, las pantallas se verían vacías
+           y parecería que se borraron los datos. -->
+      <div id="sin-conexion" class="sin-conexion" hidden>
+        📡 <b>Sin conexión a internet.</b> Estás viendo la última información guardada.
+        No se pueden registrar ventas hasta que vuelva la señal.
+      </div>
       <main id="main-content" class="main-content"></main>
     </div>
   </div>

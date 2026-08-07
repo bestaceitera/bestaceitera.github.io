@@ -1,4 +1,4 @@
-import { getAll, getById, getByDateRange, addRecord, updateRecord, removeRecord, nextFolio } from '../data.js';
+import { getAll, getById, getByDateRange, addRecord, updateRecord, removeRecord, nextFolio, adjustStockAtomic } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast, confirmDialog, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
@@ -205,12 +205,19 @@ async function render(container, profile) {
     );
     if (!ok) return;
     try {
-      // 1) Devolver el stock directamente. No se registra un movimiento de
-      //    devolución porque la venta va a desaparecer: el objetivo es dejar
-      //    todo como si nunca se hubiera registrado.
+      // 1) Devolver el stock. Va en transacción por lo mismo que al vender: si en
+      //    ese instante alguien más está vendiendo ese producto, sumar sobre un
+      //    dato ya viejo perdería una de las dos operaciones. No se registra un
+      //    movimiento de devolución porque la venta va a desaparecer: el objetivo
+      //    es dejar todo como si nunca se hubiera registrado.
       for (const item of conStock) {
-        const prod = await getById('products', item.productoId);
-        if (prod) await updateRecord('products', item.productoId, { stock: Number(prod.stock || 0) + Number(item.cantidad || 0) });
+        try {
+          await adjustStockAtomic(item.productoId, Number(item.cantidad || 0));
+        } catch (err) {
+          // El producto pudo haberse borrado del catálogo después de la venta:
+          // eso no debe impedir eliminarla ni deshacer la caja.
+          console.warn('devolver stock', item.nombre, err.message);
+        }
       }
       // 2) Quitar de la caja y del historial solo lo ligado a ESTA venta
       //    (se pregunta por su referencia, sin descargar las colecciones enteras).

@@ -24,7 +24,30 @@ const fsMod = await import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/fi
 
 export const app = initializeApp(firebaseConfig);
 export const auth = authMod.getAuth(app);
-export const db = fsMod.getFirestore(app);
+
+/**
+ * Guarda una copia local de los datos en el navegador.
+ *
+ * Sin esto, si se cae el internet las pantallas no fallan: muestran CERO
+ * registros, que es peor, porque parece que se borró todo. Con la copia local
+ * siguen mostrando lo último que se sabía y el sistema sigue usable mientras
+ * vuelve la señal. `persistentMultipleTabManager` permite tener el sistema
+ * abierto en varias pestañas o dispositivos sin que se peleen por la copia.
+ *
+ * Si el navegador no lo permite (modo incógnito, poco espacio), se cae de vuelta
+ * a la memoria: el sistema funciona igual, solo sin copia entre recargas.
+ */
+function crearFirestore() {
+  try {
+    return fsMod.initializeFirestore(app, {
+      localCache: fsMod.persistentLocalCache({ tabManager: fsMod.persistentMultipleTabManager() }),
+    });
+  } catch (err) {
+    console.warn('Sin copia local de datos (se usará solo memoria):', err?.message || err);
+    return fsMod.getFirestore(app);
+  }
+}
+export const db = crearFirestore();
 
 export const authApi = authMod;
 export const fsApi = fsMod;
