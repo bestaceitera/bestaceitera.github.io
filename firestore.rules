@@ -80,28 +80,30 @@ service cloud.firestore {
       allow read, create, update, delete: if signedIn();
     }
 
-    // ---- Ventas y órdenes: se registran, no se borran ----
-    // Anular una venta devuelve stock y mueve la caja: es decisión del dueño.
+    // ---- Ventas y órdenes ----
+    // El mostrador maneja las ventas de principio a fin: registra, corrige y
+    // anula. Es quien atiende y quien nota el error en el momento, así que no
+    // depende del dueño para arreglarlo. Anular una venta devuelve el stock y
+    // deshace el movimiento de caja, por eso también necesita tocar esos dos
+    // rastros (ver más abajo).
     match /sales/{id} {
-      allow read, create: if soloRegistrar();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if signedIn();
     }
     match /serviceOrders/{id} {
-      allow read, create: if soloRegistrar();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if signedIn();
     }
 
-    // ---- Rastro de inventario y de dinero: solo se agrega ----
-    // Son el historial que respalda el stock y el arqueo. Si se pudieran editar o
-    // borrar, dejarían de servir como respaldo de nada.
+    // ---- Rastro de inventario y de dinero ----
+    // Anular una venta tiene que poder deshacer su entrada de caja y su salida
+    // de inventario; si no, quedarían huérfanas y descuadrarían el arqueo.
     match /inventoryMovements/{id} {
-      allow read, create: if soloRegistrar();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if signedIn();
     }
     match /cashMovements/{id} {
-      allow read, create: if soloRegistrar();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if signedIn();
     }
+    // El arqueo del día y los depósitos sí quedan firmes: son el respaldo de
+    // cuánto dinero se contó y cuánto se llevó al banco.
     match /cashClosings/{id} {
       allow read, create: if soloRegistrar();
       allow update, delete: if isAdmin();

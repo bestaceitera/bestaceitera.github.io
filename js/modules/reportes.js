@@ -27,12 +27,13 @@ async function render(container) {
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="clientes">Clientes</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="caja">Caja</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="comisiones">Comisiones</button>
+      <button class="btn btn-secondary btn-sm tab-btn" data-tab="usopropio">Uso propio</button>
     </div>
     <div id="rep-content" class="mt-16"></div>
   `;
   const tabButtons = container.querySelectorAll('.tab-btn');
   const content = container.querySelector('#rep-content');
-  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones };
+  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones, usopropio: renderUsoPropio };
 
   function setActiveTab(tab) {
     tabButtons.forEach((b) => {
@@ -172,6 +173,90 @@ async function render(container) {
     document.getElementById('rep-cli-table').innerHTML = t.html;
     t.mount(document.getElementById('rep-cli-table'));
     bindExportButtons(el, { title: 'Clientes facturados / frecuentes', columns: cols, getRows: () => rows, filename: 'reporte_clientes' });
+  }
+
+  // ---------------- Uso propio ----------------
+  /**
+   * Producto que salió del inventario sin venderse. No es venta, no entra a la
+   * caja y no genera comisión: es costo puro, y por eso conviene poder verlo
+   * aparte, con su total en quetzales y exportable, no escondido dentro de otro
+   * reporte.
+   */
+  let presetUso = 'mes';
+
+  async function renderUsoPropio(el) {
+    let range = applyRangePreset(presetUso);
+
+    async function draw() {
+      el.innerHTML = '<div class="empty-state">Cargando…</div>';
+      const movs = (await porRango('inventoryMovements', range, { max: 3000 }))
+        .filter((m) => m.motivo === 'uso propio');
+
+      const costoDe = (m) => round2((Number(m.costoUnitario) || 0) * (Number(m.cantidad) || 0));
+      const totalUnidades = movs.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
+      const totalCosto = round2(movs.reduce((s, m) => s + costoDe(m), 0));
+
+      // Cuánto sacó cada persona, para saber a quién preguntarle si algo no cuadra.
+      const porPersona = {};
+      movs.forEach((m) => {
+        const quien = m.usuarioNombre || 'Sin nombre';
+        porPersona[quien] = porPersona[quien] || { nombre: quien, unidades: 0, costo: 0 };
+        porPersona[quien].unidades += Number(m.cantidad) || 0;
+        porPersona[quien].costo = round2(porPersona[quien].costo + costoDe(m));
+      });
+      const personas = Object.values(porPersona).sort((a, b) => b.unidades - a.unidades);
+
+      const rows = movs.map((m) => ({
+        fecha: m.fecha || '',
+        producto: m.productoNombre || '',
+        cantidad: m.cantidad,
+        costo: formatQ(costoDe(m)),
+        responsable: m.usuarioNombre || '',
+        nota: m.nota || '',
+        catalogo: m.productoId ? 'Sí' : 'No (suelto)',
+      }));
+      const cols = [
+        { key: 'fecha', label: 'Fecha' },
+        { key: 'producto', label: 'Producto' },
+        { key: 'cantidad', label: 'Cantidad' },
+        { key: 'costo', label: 'Costo' },
+        { key: 'responsable', label: 'Quién lo sacó' },
+        { key: 'catalogo', label: 'En catálogo' },
+        { key: 'nota', label: '¿Para qué?' },
+      ];
+
+      el.innerHTML = `
+        <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}<div class="spacer"></div>${exportButtonsHtml()}</div>
+        <div class="grid grid-3 mt-16">
+          <div class="stat-card"><div class="label">Unidades que salieron</div><div class="value">${totalUnidades}</div>
+            <div class="sub">${movs.length === 1 ? '1 salida registrada' : `${movs.length} salidas registradas`}</div></div>
+          <div class="stat-card" style="border-color:var(--primary);background:var(--primary-light)">
+            <div class="label">Costo de lo que salió</div><div class="value">${formatQ(totalCosto)}</div>
+            <div class="sub">no se cobró — es costo del negocio</div></div>
+          <div class="stat-card"><div class="label">Personas</div><div class="value">${personas.length}</div></div>
+        </div>
+        <div class="periodo-resumen mt-16">
+          <span>Del ${escapeHtml(range.from)} al ${escapeHtml(range.to)}</span>
+          <span>No es venta · no entra a la caja · no genera comisión</span>
+        </div>
+        ${personas.length ? `<div class="section-title">Cuánto sacó cada quien</div>
+        <div class="card"><div class="table-wrap"><table>
+          <thead><tr><th>Persona</th><th>Unidades</th><th>Costo</th></tr></thead>
+          <tbody>${personas.map((p) => `<tr><td>${escapeHtml(p.nombre)}</td><td>${p.unidades}</td><td>${formatQ(p.costo)}</td></tr>`).join('')}</tbody>
+        </table></div></div>` : ''}
+        <div class="section-title">Detalle de cada salida</div>
+        <div class="card"><div id="rep-uso-table"></div></div>
+      `;
+
+      const t = renderTable({ columns: cols, rows, pageSize: 15,
+        emptyMessage: 'No hubo salidas por uso propio en estas fechas.' });
+      const cont = document.getElementById('rep-uso-table');
+      cont.innerHTML = t.html;
+      t.mount(cont);
+      bindExportButtons(el, { title: 'Productos para uso propio', columns: cols, getRows: () => rows, filename: 'uso_propio' });
+      bindRangeControls(el, (r, preset) => { range = r; presetUso = preset; draw(); }, { activo: presetUso });
+    }
+    await draw();
   }
 
   // ---------------- Caja: cuadre día por día ----------------
@@ -370,14 +455,6 @@ async function render(container) {
 
       // Productos que salieron para uso propio: NO son venta ni generan comisión.
       const usoPropio = invMovs.filter((m) => m.motivo === 'uso propio');
-      const usoPorPersona = {};
-      usoPropio.forEach((m) => {
-        const quien = m.usuarioNombre || 'Sin nombre';
-        usoPorPersona[quien] = usoPorPersona[quien] || { nombre: quien, items: [], unidades: 0 };
-        usoPorPersona[quien].items.push(m);
-        usoPorPersona[quien].unidades += Number(m.cantidad) || 0;
-      });
-
       const rows = sorted.map((r) => ({
         nombre: r.nombre,
         ventas: r.ventas.length,
@@ -412,16 +489,10 @@ async function render(container) {
         ${sinAsignar > 0.009 ? `<p class="text-muted" style="font-size:12.5px;margin-top:8px">
             Nota: ${formatQ(sinAsignar)} del total no tiene empleado asignado (ventas registradas antes de exigirlo).</p>` : ''}
 
-        <div class="section-title">Productos para uso propio (no es venta, no genera comisión)</div>
-        <div class="card">
-          ${usoPropio.length ? Object.values(usoPorPersona).map((p) => `
-            <div class="section-title" style="margin-top:0">${escapeHtml(p.nombre)} — ${p.unidades} unidad(es)</div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Nota</th></tr></thead>
-              <tbody>${p.items.map((m) => `<tr><td>${escapeHtml(m.fecha || '')}</td><td>${escapeHtml(m.productoNombre || '')}</td><td>${m.cantidad}</td><td>${escapeHtml(m.nota || '')}</td></tr>`).join('')}</tbody>
-            </table></div>`).join('')
-          : '<div class="empty-state">Sin salidas por uso propio en el período.</div>'}
-        </div>
+        ${usoPropio.length ? `<p class="text-muted mt-16" style="font-size:12.5px">
+            En este período también salieron <b>${usoPropio.reduce((s, m) => s + (Number(m.cantidad) || 0), 0)} unidad(es)</b>
+            para uso propio, que no son venta ni generan comisión.
+            El detalle completo está en la pestaña <b>Uso propio</b>.</p>` : ''}
       `;
       const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Nadie tiene ventas en el período.' });
       const tableContainer = document.getElementById('rep-comisiones-table');

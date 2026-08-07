@@ -29,7 +29,7 @@ registerRoute({ hash: 'clientes', label: 'Clientes', icon: '👥', section: 'Ope
 registerRoute({ hash: 'caja', label: 'Caja', icon: '💰', section: 'Operación', render: caja.render });
 registerRoute({ hash: 'depositos', label: 'Depósitos bancarios', icon: '🏦', section: 'Operación', render: depositos.render });
 
-registerRoute({ hash: 'inventario', label: 'Inventario', icon: '📦', section: 'Almacén', roles: ['admin'], render: inventario.render });
+registerRoute({ hash: 'inventario', label: 'Inventario', icon: '📦', section: 'Almacén', render: inventario.render });
 registerRoute({ hash: 'productos', label: 'Productos', icon: '🛢️', section: 'Almacén', render: productos.render });
 registerRoute({ hash: 'categorias', label: 'Categorías', icon: '🏷️', section: 'Almacén', render: categorias.render });
 registerRoute({ hash: 'marcas', label: 'Marcas', icon: '⭐', section: 'Almacén', render: marcas.render });

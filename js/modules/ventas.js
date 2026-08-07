@@ -1,5 +1,6 @@
 import { getAll, getById, getByDateRange, addRecord, updateRecord, removeRecord, nextFolio, adjustStockAtomic } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
+import { openUsoPropioForm } from './usoPropio.js';
 import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast, confirmDialog, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
@@ -15,8 +16,10 @@ let rangoGuardado = null;
 let presetGuardado = 'mes';
 
 async function render(container, profile) {
-  const esAdmin = profile?.role === 'admin';
-
+  // Ventas es del mostrador: el empleado registra, corrige y anula igual que el
+  // administrador. Es él quien atiende y quien se da cuenta de un error al
+  // instante, así que no tiene sentido que dependa del dueño para arreglarlo.
+  //
   // Las ventas se piden POR PERÍODO a la base, no "las últimas N". Así el total
   // que se muestra es siempre el total real de las fechas elegidas, aunque el
   // negocio lleve años acumulando ventas, y la pantalla solo descarga el período
@@ -34,6 +37,7 @@ async function render(container, profile) {
       <div class="toolbar">
         <input type="search" class="search-box" id="v-buscar" placeholder="Buscar por No., cliente o empleado...">
         <div class="spacer"></div>
+        <button class="btn btn-secondary btn-sm" id="btn-uso-propio">− Para uso propio</button>
         <button class="btn btn-primary btn-sm" id="btn-new">+ Nueva venta</button>
       </div>
       <div class="toolbar" id="v-filtros" style="margin-top:10px">${dateRangePresetButtons({ conAyer: true })}</div>
@@ -162,6 +166,17 @@ async function render(container, profile) {
     pagina = 1; cargar();
   }, { activo: presetGuardado });
   card.querySelector('#btn-new').addEventListener('click', openSaleForm);
+
+  // Sacar producto sin venderlo se hace desde el mostrador, que es donde ocurre.
+  // El catálogo se pide en el momento del clic para no cargarlo si no se usa.
+  card.querySelector('#btn-uso-propio').addEventListener('click', async () => {
+    const [products, users] = await Promise.all([
+      getAll('products', { order: 'nombre' }),
+      getAll('users', { order: 'nombre' }),
+    ]);
+    const empleados = users.filter((u) => u.tipo === 'empleado' && u.activo !== false);
+    openUsoPropioForm({ products, empleados, onSaved: () => render(container, profile) });
+  });
   card.addEventListener('click', (e) => {
     const id = e.target.dataset.view;
     const venta = id && sales.find((s) => s.id === id);
@@ -179,12 +194,11 @@ async function render(container, profile) {
       <p class="mt-16 text-right">${s.iva > 0 ? `IVA (12%): ${formatQ(s.iva)}<br>` : ''}${s.descuentoTotal > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>Descuento: −${formatQ(s.descuentoTotal)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
       <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
       <p><b>Empleados:</b> ${(s.empleadosComision || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
-      ${esAdmin ? `<div class="modal-actions">
+      <div class="modal-actions">
         <button class="btn btn-secondary" id="v-editar">Editar</button>
         <button class="btn btn-danger" id="v-eliminar">Eliminar venta</button>
-      </div>` : ''}
+      </div>
     `);
-    if (!esAdmin) return;
     document.getElementById('v-editar').addEventListener('click', () => openEditForm(s));
     document.getElementById('v-eliminar').addEventListener('click', () => eliminarVenta(s));
   }
