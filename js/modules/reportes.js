@@ -1,6 +1,6 @@
 import { getAll } from '../data.js';
 import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
-import { formatQ, todayISO, round2, escapeHtml } from '../utils.js';
+import { formatQ, todayISO, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 
 /**
@@ -174,46 +174,124 @@ async function render(container) {
     bindExportButtons(el, { title: 'Clientes facturados / frecuentes', columns: cols, getRows: () => rows, filename: 'reporte_clientes' });
   }
 
-  // ---------------- Caja ----------------
+  // ---------------- Caja: cuadre día por día ----------------
+  /**
+   * Cuánto efectivo se queda en el negocio como caja chica cuando ese día no se
+   * registró un fondo inicial. Si sí se registró, manda el monto real de ese día.
+   */
+  const CAJA_CHICA_POR_DEFECTO = 105;
+
+  const ENTRADAS = ['venta', 'servicio', 'abono', 'otro_ingreso', 'devolucion'];
+  const SALIDAS = ['gasto', 'compra', 'vuelto', 'retiro', 'deposito'];
+
+  /**
+   * Arma el cuadre de cada día a partir de los movimientos de caja.
+   *
+   *   efectivo en caja = caja chica + entradas − salidas
+   *   a depositar      = efectivo en caja − caja chica
+   *
+   * La caja chica no se deposita nunca: se queda en el negocio para dar vueltos.
+   * Los depósitos que ya se hicieron cuentan como salida, así que "a depositar"
+   * siempre muestra lo que TODAVÍA falta llevar al banco, no lo del día entero.
+   */
+  function cuadrarPorDia(movimientos) {
+    const dias = new Map();
+    for (const m of movimientos) {
+      const dia = m.fecha || '';
+      if (!dia) continue;
+      if (!dias.has(dia)) dias.set(dia, { fecha: dia, cajaChica: 0, tuvoFondo: false, entradas: 0, salidas: 0, depositado: 0, detalle: {} });
+      const d = dias.get(dia);
+      const monto = Number(m.monto) || 0;
+      if (m.categoria === 'fondo_inicial') { d.cajaChica += monto; d.tuvoFondo = true; continue; }
+      if (ENTRADAS.includes(m.categoria)) d.entradas += monto;
+      else if (SALIDAS.includes(m.categoria)) d.salidas += monto;
+      if (m.categoria === 'deposito') d.depositado += monto;
+      d.detalle[m.categoria] = round2((d.detalle[m.categoria] || 0) + monto);
+    }
+    return [...dias.values()]
+      .map((d) => {
+        const cajaChica = d.tuvoFondo ? round2(d.cajaChica) : CAJA_CHICA_POR_DEFECTO;
+        const enCaja = round2(cajaChica + d.entradas - d.salidas);
+        return { ...d, cajaChica, enCaja, aDepositar: round2(Math.max(0, enCaja - cajaChica)) };
+      })
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  }
+
+  let presetCaja = 'mes';
+
   async function renderCaja(el) {
-    el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const [closings, deposits, returns] = await Promise.all([
-      getAll('cashClosings', { order: 'fecha', direction: 'desc', max: 1000 }),
-      getAll('deposits', { order: 'fecha', direction: 'desc', max: 1000 }),
-      getAll('cashReturns', { order: 'fecha', direction: 'desc', max: 1000 }),
-    ]);
-    const pendientes = returns.filter((r) => r.estado === 'pendiente');
-    const diferencias = closings.filter((c) => c.estado !== 'cuadrada');
+    let range = applyRangePreset(presetCaja);
 
-    const closingRows = closings.map((c) => ({ fecha: c.fecha, esperado: formatQ(c.esperado), contado: formatQ(c.contado), diferencia: formatQ(c.diferencia), estado: c.estado, usuario: c.usuarioNombre }));
-    const closingCols = [{ key: 'fecha', label: 'Fecha' }, { key: 'esperado', label: 'Esperado' }, { key: 'contado', label: 'Contado' }, { key: 'diferencia', label: 'Diferencia' }, { key: 'estado', label: 'Estado' }, { key: 'usuario', label: 'Usuario' }];
+    async function draw() {
+      el.innerHTML = '<div class="empty-state">Cargando…</div>';
+      const [movimientos, deposits] = await Promise.all([
+        porRango('cashMovements', range, { max: 4000 }),
+        porRango('deposits', range, { max: 1000 }),
+      ]);
+      const dias = cuadrarPorDia(movimientos);
+      const totalDepositar = round2(dias.reduce((s, d) => s + d.aDepositar, 0));
+      const totalVendido = round2(dias.reduce((s, d) => s + d.entradas, 0));
+      const totalDepositado = round2(dias.reduce((s, d) => s + d.depositado, 0));
 
-    const depositRows = deposits.map((d) => ({ fecha: d.fecha, banco: d.banco, boleta: d.boleta, monto: formatQ(d.monto), usuario: d.usuarioNombre }));
-    const depositCols = [{ key: 'fecha', label: 'Fecha' }, { key: 'banco', label: 'Banco' }, { key: 'boleta', label: 'Boleta' }, { key: 'monto', label: 'Monto' }, { key: 'usuario', label: 'Usuario' }];
+      const rows = dias.map((d) => ({
+        fecha: d.fecha,
+        dia: formatDateLong(d.fecha),
+        cajaChica: formatQ(d.cajaChica) + (d.tuvoFondo ? '' : ' *'),
+        entradas: formatQ(d.entradas),
+        salidas: formatQ(round2(d.salidas - d.depositado)),
+        depositado: formatQ(d.depositado),
+        enCaja: formatQ(d.enCaja),
+        aDepositar: formatQ(d.aDepositar),
+      }));
+      const cols = [
+        { key: 'dia', label: 'Día' },
+        { key: 'cajaChica', label: 'Caja chica' },
+        { key: 'entradas', label: 'Entró en efectivo' },
+        { key: 'salidas', label: 'Salidas' },
+        { key: 'depositado', label: 'Ya depositado' },
+        { key: 'enCaja', label: 'Efectivo en caja' },
+        // Es el número por el que se abre este reporte: va resaltado.
+        { key: 'aDepositar', label: 'A depositar', format: (r) => `<b style="color:var(--primary)">${escapeHtml(r.aDepositar)}</b>` },
+      ];
 
-    el.innerHTML = `
-      <div class="grid grid-3" style="margin-bottom:16px">
-        <div class="stat-card"><div class="label">Cuadres con diferencia</div><div class="value" style="color:var(--danger)">${diferencias.length}</div></div>
-        <div class="stat-card"><div class="label">Depósitos realizados</div><div class="value">${deposits.length}</div></div>
-        <div class="stat-card"><div class="label">Pendiente de devolver</div><div class="value">${formatQ(pendientes.reduce((s, r) => s + r.monto, 0))}</div></div>
-      </div>
-      <div class="section-title" style="margin-top:0">Arqueo diario (cuadres)</div>
-      <div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-caja-closings"></div></div>
-      <div class="section-title">Depósitos bancarios realizados</div>
-      <div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-caja-deposits"></div></div>
-    `;
+      const depositRows = deposits.map((d) => ({ fecha: d.fecha, banco: d.banco, boleta: d.boleta, monto: formatQ(d.monto), usuario: d.usuarioNombre }));
+      const depositCols = [{ key: 'fecha', label: 'Fecha' }, { key: 'banco', label: 'Banco' }, { key: 'boleta', label: 'Boleta' }, { key: 'monto', label: 'Monto' }, { key: 'usuario', label: 'Usuario' }];
 
-    const t1 = renderTable({ columns: closingCols, rows: closingRows, pageSize: 10, emptyMessage: 'Sin cuadres registrados.' });
-    const closingsContainer = document.getElementById('rep-caja-closings');
-    closingsContainer.innerHTML = t1.html;
-    t1.mount(closingsContainer);
-    bindExportButtons(closingsContainer.closest('.card'), { title: 'Arqueo diario de caja', columns: closingCols, getRows: () => closingRows, filename: 'arqueo_caja' });
+      const hayAsumidos = dias.some((d) => !d.tuvoFondo);
 
-    const t2 = renderTable({ columns: depositCols, rows: depositRows, pageSize: 10, emptyMessage: 'Sin depósitos registrados.' });
-    const depositsContainer = document.getElementById('rep-caja-deposits');
-    depositsContainer.innerHTML = t2.html;
-    t2.mount(depositsContainer);
-    bindExportButtons(depositsContainer.closest('.card'), { title: 'Depósitos bancarios', columns: depositCols, getRows: () => depositRows, filename: 'depositos_bancarios' });
+      el.innerHTML = `
+        <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}<div class="spacer"></div>${exportButtonsHtml()}</div>
+        <div class="grid grid-3 mt-16">
+          <div class="stat-card"><div class="label">Entró en efectivo</div><div class="value">${formatQ(totalVendido)}</div></div>
+          <div class="stat-card"><div class="label">Ya depositado</div><div class="value">${formatQ(totalDepositado)}</div></div>
+          <div class="stat-card" style="border-color:var(--primary);background:var(--primary-light)">
+            <div class="label">Falta depositar</div><div class="value">${formatQ(totalDepositar)}</div></div>
+        </div>
+        <div class="periodo-resumen mt-16">
+          <span>Del ${escapeHtml(range.from)} al ${escapeHtml(range.to)}</span>
+          <span>${dias.length} día${dias.length === 1 ? '' : 's'} con movimiento</span>
+        </div>
+        <div class="card mt-16"><div id="rep-caja-dias"></div></div>
+        ${hayAsumidos ? `<p class="text-muted">* Ese día no se registró fondo inicial, así que se tomó la caja chica de ${formatQ(CAJA_CHICA_POR_DEFECTO)}.</p>` : ''}
+        <div class="section-title">Depósitos bancarios realizados</div>
+        <div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-caja-deposits"></div></div>
+      `;
+
+      const t1 = renderTable({ columns: cols, rows, pageSize: 15, emptyMessage: 'No hubo movimiento de caja en estas fechas.' });
+      const cont = document.getElementById('rep-caja-dias');
+      cont.innerHTML = t1.html;
+      t1.mount(cont);
+      bindExportButtons(el, { title: 'Cuadre diario de caja', columns: cols, getRows: () => rows, filename: 'cuadre_diario' });
+
+      const t2 = renderTable({ columns: depositCols, rows: depositRows, pageSize: 10, emptyMessage: 'Sin depósitos registrados en estas fechas.' });
+      const dep = document.getElementById('rep-caja-deposits');
+      dep.innerHTML = t2.html;
+      t2.mount(dep);
+      bindExportButtons(dep.closest('.card'), { title: 'Depósitos bancarios', columns: depositCols, getRows: () => depositRows, filename: 'depositos_bancarios' });
+
+      bindRangeControls(el, (r, preset) => { range = r; presetCaja = preset; draw(); }, { activo: presetCaja });
+    }
+    await draw();
   }
 
   // ---------------- Cierre del período: ventas por empleado y comisiones ----------------
