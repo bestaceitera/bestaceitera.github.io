@@ -43,11 +43,39 @@ async function render(container) {
         <b>⚠ Alerta de stock bajo:</b> ${lowStock.map((p) => `${p.nombre} (${p.stock})`).join(', ')}
       </div>` : ''}
     <div class="section-title">Entradas y salidas de productos</div>
+    <div class="toolbar" id="inv-filtros" style="margin-bottom:10px">
+      <button class="btn btn-primary btn-sm" data-mov="todos">Todos</button>
+      <button class="btn btn-secondary btn-sm" data-mov="venta">Por ventas</button>
+      <button class="btn btn-secondary btn-sm" data-mov="servicio">Por servicios</button>
+      <button class="btn btn-secondary btn-sm" data-mov="compra">Por compras</button>
+      <button class="btn btn-secondary btn-sm" data-mov="uso propio">Uso propio</button>
+    </div>
+    <div id="inv-resumen"></div>
     <div class="card" id="inv-kardex-card">${table.html}</div>
   `;
   const card = container.querySelector('#inv-kardex-card');
-  table.mount(card);
+  const tabla = table.mount(card);
   card.querySelector('#btn-uso-propio').addEventListener('click', openUsoPropioForm);
+
+  // Filtro por tipo de movimiento: sirve sobre todo para revisar de un vistazo
+  // qué se sacó para uso propio en vez de buscarlo entre todo lo demás.
+  const botonesFiltro = container.querySelectorAll('#inv-filtros [data-mov]');
+  function aplicarFiltro(tipo) {
+    botonesFiltro.forEach((b) => {
+      const activo = b.dataset.mov === tipo;
+      b.classList.toggle('btn-primary', activo);
+      b.classList.toggle('btn-secondary', !activo);
+    });
+    const filas = tipo === 'todos' ? movements : movements.filter((m) => m.motivo === tipo);
+    tabla.refresh(filas);
+    const unidades = filas.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
+    container.querySelector('#inv-resumen').innerHTML = tipo === 'todos' ? '' : `
+      <div class="periodo-resumen">
+        <span>${tipo === 'uso propio' ? 'Productos que salieron para uso propio (no son venta)' : `Movimientos por ${escapeHtml(tipo)}`}</span>
+        <span>${filas.length} movimiento${filas.length === 1 ? '' : 's'} · <b>${unidades} unidad${unidades === 1 ? '' : 'es'}</b></span>
+      </div>`;
+  }
+  botonesFiltro.forEach((b) => b.addEventListener('click', () => aplicarFiltro(b.dataset.mov)));
 
   /**
    * Salida de productos para consumo propio del negocio: descuenta stock y deja
