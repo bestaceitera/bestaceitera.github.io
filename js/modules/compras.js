@@ -148,9 +148,12 @@ async function render(container) {
         for (const item of cart) {
           await applyStockChange(item.productoId, item.cantidad, { motivo: 'compra', referenciaId: purchaseId, usuario: user });
         }
+        // La salida de caja lleva la fecha de la compra, no la de hoy: así registrar
+        // hoy una compra de la semana pasada no descuadra el efectivo de hoy.
         await addCashMovement({
           tipo: 'salida', categoria: 'compra', monto: total,
           motivo: `Compra ${numero} — ${provOpt.dataset.nombre}`, referenciaId: purchaseId,
+          fecha: $('c-fecha').value || todayISO(),
         });
         toast('Compra registrada. Inventario actualizado.', 'success');
         closeModal();

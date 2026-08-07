@@ -127,7 +127,10 @@ async function render(container) {
           monto: Number(v.monto), observaciones: v.observaciones.trim(), fotoBase64,
           usuarioId: user.uid, usuarioNombre: user.nombre,
         });
-        await addCashMovement({ tipo: 'salida', categoria: 'deposito', monto: Number(v.monto), motivo: `Depósito ${v.banco}`, referenciaId: depositId });
+        // El movimiento de caja tiene que llevar la MISMA fecha del depósito. Si no,
+        // registrar hoy el depósito de ayer restaría el dinero del efectivo de hoy,
+        // que ya no lo tiene: la caja de hoy saldría faltante sin razón.
+        await addCashMovement({ tipo: 'salida', categoria: 'deposito', monto: Number(v.monto), motivo: `Depósito ${v.banco}`, referenciaId: depositId, fecha: v.fecha || todayISO() });
         toast('Depósito registrado correctamente.', 'success');
         closeModal();
         render(container);

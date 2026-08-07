@@ -61,7 +61,9 @@ async function render(container) {
           categoria: v.categoria, descripcion: v.descripcion.trim(), monto: Number(v.monto),
           fecha: v.fecha || todayISO(), usuarioId: user.uid, usuarioNombre: user.nombre,
         });
-        await addCashMovement({ tipo: 'salida', categoria: 'gasto', monto: Number(v.monto), motivo: `${v.categoria} — ${v.descripcion.trim()}`, referenciaId: expenseId });
+        // Mismo criterio que en depósitos: el movimiento de caja lleva la fecha del
+        // gasto, para que registrar hoy un gasto de ayer no descuadre la caja de hoy.
+        await addCashMovement({ tipo: 'salida', categoria: 'gasto', monto: Number(v.monto), motivo: `${v.categoria} — ${v.descripcion.trim()}`, referenciaId: expenseId, fecha: v.fecha || todayISO() });
         toast('Gasto registrado.', 'success');
         closeModal();
         render(container);

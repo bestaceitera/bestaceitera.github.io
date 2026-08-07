@@ -1,7 +1,7 @@
 import { getAll, getByDateRange, addRecord, updateRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast, confirmDialog, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
-import { escapeHtml, formatQ, formatDateTime, round2, todayISO } from '../utils.js';
+import { escapeHtml, formatQ, formatDateTime, formatDateLong, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 
 const CATEGORIA_LABEL = {
@@ -352,7 +352,17 @@ async function render(container) {
     let movements = primera.filas;
     const table = renderTable({
       columns: [
-        { key: 'createdAt', label: 'Fecha/hora', format: (r) => formatDateTime(r.createdAt) },
+        // Se muestra el DÍA AL QUE PERTENECE el movimiento, no la hora en que se
+        // tecleó. Al cargar ventas de días pasados, ver la fecha de captura haría
+        // pensar que el dinero entró hoy. Si se registró en otro día, se aclara.
+        { key: 'fecha', label: 'Día', format: (r) => {
+          const dia = r.fecha || (r.createdAt?.toDate ? formatDateTime(r.createdAt).slice(0, 10) : '');
+          const capturado = r.createdAt?.toDate ? r.createdAt.toDate() : null;
+          const capturadoISO = capturado ? new Date(capturado - capturado.getTimezoneOffset() * 60000).toISOString().slice(0, 10) : null;
+          const distinto = capturadoISO && r.fecha && capturadoISO !== r.fecha;
+          return `${escapeHtml(formatDateLong(dia))}${r.hora ? ` <span class="text-muted">${escapeHtml(r.hora)}</span>` : ''}` +
+            (distinto ? `<br><span class="text-muted" style="font-size:11.5px">registrado después</span>` : '');
+        } },
         { key: 'tipo', label: 'Tipo', format: (r) => r.tipo === 'entrada' ? `<span class="badge badge-success">Entrada</span>` : `<span class="badge badge-danger">Salida</span>` },
         { key: 'categoria', label: 'Categoría', format: (r) => escapeHtml(CATEGORIA_LABEL[r.categoria] || r.categoria) },
         { key: 'monto', label: 'Monto', format: (r) => formatQ(r.monto) },
