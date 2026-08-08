@@ -51,7 +51,14 @@ export function abrirCierreDia({ fecha, dia, cierre, onSaved }) {
         <tr><td>Vueltos entregados</td><td class="text-right">− ${formatQ(dia?.vueltos ?? 0)}</td></tr>
         <tr style="font-weight:700;border-top:1px solid var(--border)">
           <td>Debería haber en caja</td><td class="text-right">${formatQ(esperado)}</td></tr>
+        <tr><td>Caja chica que se queda</td><td class="text-right">− ${formatQ(dia?.cajaChica ?? 0)}</td></tr>
       </table>
+    </div>
+    <!-- El número por el que se abre este cuadro: cuánto hay que llevar al banco.
+         La caja chica no se deposita, se queda para dar vueltos. -->
+    <div class="depositar-banco">
+      <span>Depositar a banco</span>
+      <b>${formatQ(dia?.aDepositar ?? 0)}</b>
     </div>
     <label>¿Cuánto contaste físicamente? (Q)
       <input type="number" id="cd-contado" min="0" step="0.01" placeholder="0.00">

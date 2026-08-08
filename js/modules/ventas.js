@@ -133,14 +133,14 @@ async function render(container, profile) {
       ? `<button class="btn btn-sm chip-estado ok" data-cierre="${fecha}">
            ✓ Día cerrado${cierre.estado !== 'cuadrada' ? ` · ${cierre.estado === 'sobrante' ? 'sobró' : 'faltó'} ${formatQ(Math.abs(cierre.diferencia))}` : ''}
          </button>`
-      : `<button class="btn btn-secondary btn-sm" data-cierre="${fecha}">Cerrar día</button>`;
+      : `<button class="btn btn-cerrar-dia btn-sm" data-cierre="${fecha}">Cerrar día</button>`;
 
     const chipDeposito = falta <= 0.009
       ? (depositado > 0
           ? `<span class="chip-estado ok">✓ Depositado ${formatQ(depositado)}</span>`
           : `<span class="chip-estado neutro">Sin efectivo que depositar</span>`)
-      : `<button class="btn btn-secondary btn-sm" data-deposito="${fecha}">
-           Depositar ${formatQ(falta)}${depositado > 0 ? ' (falta)' : ''}
+      : `<button class="btn btn-depositar btn-sm" data-deposito="${fecha}">
+           🏦 Depositar ${formatQ(falta)}${depositado > 0 ? ' (falta)' : ''}
          </button>`;
 
     return `<div class="dia-estado">
