@@ -3,6 +3,7 @@ import { renderTable, openModal, closeModal, toast, productSearch, dateRangePres
 import { formatQ, formatDateTime, escapeHtml, round2, todayISO } from '../utils.js';
 import { openUsoPropioForm } from './usoPropio.js';
 import { getCurrentUser } from '../auth.js';
+import { stockBajoHtml, productosBajoMinimo } from './stockBajo.js';
 
 // El período elegido se guarda fuera de render() para que no se pierda cuando la
 // pantalla se refresca sola al llegar un cambio desde otro dispositivo.
@@ -24,7 +25,8 @@ async function render(container) {
   movements = primera.filas;
   truncado = primera.truncado;
 
-  const lowStock = products.filter((p) => Number(p.stock) <= Number(p.stockMinimo ?? 0));
+  // Mismo criterio que el panel de abajo, para que el número y la lista coincidan.
+  const lowStock = productosBajoMinimo(products);
 
   const table = renderTable({
     columns: [
@@ -53,9 +55,7 @@ async function render(container) {
       <div class="stat-card"><div class="label">Valor inventario (costo)</div><div class="value">${formatQ(products.reduce((s, p) => s + Number(p.stock || 0) * Number(p.precioCompra || 0), 0))}</div></div>
       <div class="stat-card"><div class="label">Movimientos del período</div><div class="value" id="inv-total-movs">${movements.length}</div></div>
     </div>
-    ${lowStock.length ? `<div class="card" style="border-color:var(--danger);background:var(--danger-light);margin-bottom:16px">
-        <b>⚠ Alerta de stock bajo:</b> ${lowStock.map((p) => `${p.nombre} (${p.stock})`).join(', ')}
-      </div>` : ''}
+    ${stockBajoHtml(products, { max: 60 })}
     <div class="section-title">Entradas y salidas de productos</div>
     <div class="toolbar" id="inv-fechas" style="margin-bottom:10px">${dateRangePresetButtons()}</div>
     <div class="toolbar" id="inv-filtros" style="margin-bottom:10px">

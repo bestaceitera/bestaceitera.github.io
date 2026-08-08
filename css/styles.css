@@ -229,3 +229,54 @@ tbody tr:hover{background:var(--bg)}
 .chip-estado.ok { background: var(--success-light); color: var(--success); border-color: var(--success); }
 .chip-estado.neutro { background: transparent; color: var(--text-muted); border-color: var(--border); font-weight: 400; }
 button.chip-estado { cursor: pointer; }
+
+/* Panel de stock bajo. Una tarjeta por producto en vez de una lista con comas:
+   con nueve productos la lista ya no se leía, y lo agotado se perdía entre lo
+   que solo iba bajo. */
+.stock-bajo {
+  border: 1px solid var(--danger);
+  background: var(--danger-light);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.stock-bajo-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.stock-bajo-titulo { font-weight: 700; color: var(--danger); }
+.stock-bajo-conteo { color: var(--text-muted); font-size: 12.5px; margin-left: auto; }
+.stock-bajo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+.stock-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.stock-item.agotado { border-left-color: var(--danger); }
+.stock-item-nombre {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  /* El nombre completo queda en el title: no vale la pena romper la cuadrícula
+     por un producto de nombre largo. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stock-item-cifra { font-size: 12.5px; color: var(--text-muted); display: flex; gap: 8px; align-items: baseline; }
+.stock-item.agotado .stock-item-cifra { color: var(--danger); font-weight: 600; }
+.stock-item-min { margin-left: auto; font-size: 11.5px; opacity: .75; }
+.stock-bajo-resto { margin-top: 9px; font-size: 12.5px; color: var(--text-muted); }

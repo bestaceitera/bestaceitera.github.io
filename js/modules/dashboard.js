@@ -1,6 +1,7 @@
 import { getAll, countRecords } from '../data.js';
 import { formatQ, todayISO, round2 } from '../utils.js';
 import { barChart, lineChart } from '../charts.js';
+import { stockBajoHtml, productosBajoMinimo } from './stockBajo.js';
 import { escapeHtml } from '../utils.js';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -43,7 +44,8 @@ async function render(container, profile) {
   const serviciosHoy = serviceOrders.filter((s) => s.fecha === today);
   const totalVentasHoy = round2(ventasHoy.reduce((s, v) => s + v.total, 0));
   const totalServiciosHoy = round2(serviciosHoy.reduce((s, v) => s + v.total, 0));
-  const lowStock = products.filter((p) => Number(p.stock) <= Number(p.stockMinimo ?? 0));
+  // Mismo criterio que el panel de abajo, para que el número y la lista no se contradigan.
+  const lowStock = productosBajoMinimo(products);
 
   const movementsToday = cashMovementsToday.filter((m) => m.fecha === today);
   const fondoInicial = movementsToday.filter((m) => m.categoria === 'fondo_inicial').reduce((s, m) => s + m.monto, 0);
@@ -84,9 +86,7 @@ async function render(container, profile) {
       ` : ''}
     </div>
 
-    ${lowStock.length ? `<div class="card mt-16" style="border-color:var(--danger);background:var(--danger-light)">
-        ⚠ <b>Alerta de stock bajo:</b> ${lowStock.map((p) => escapeHtml(p.nombre)).join(', ')}
-      </div>` : ''}
+    <div class="mt-16">${stockBajoHtml(products, { max: 8 })}</div>
 
     <div class="grid grid-2 mt-16">
       <div class="card">

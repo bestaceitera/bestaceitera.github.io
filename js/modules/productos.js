@@ -1,5 +1,6 @@
 import { getAll, addRecord, updateRecord, removeRecord } from '../data.js';
 import { renderTable, openModal, closeModal, toast, confirmDialog, formValues } from '../ui.js';
+import { stockBajoHtml } from './stockBajo.js';
 import { escapeHtml, formatQ } from '../utils.js';
 
 async function render(container, profile) {
@@ -11,7 +12,6 @@ async function render(container, profile) {
   const categories = allCategories.filter((c) => c.activo !== false);
   const brands = allBrands.filter((b) => b.activo !== false);
 
-  const lowStockCount = items.filter((p) => Number(p.stock) <= Number(p.stockMinimo ?? 0)).length;
 
   const table = renderTable({
     columns: [
@@ -37,9 +37,7 @@ async function render(container, profile) {
   });
 
   container.innerHTML = `
-    ${lowStockCount ? `<div class="card" style="border-color:var(--danger);background:var(--danger-light);margin-bottom:16px">
-        ⚠ <b>${lowStockCount}</b> producto(s) con stock igual o por debajo del mínimo.
-      </div>` : ''}
+    ${stockBajoHtml(items, { max: 60 })}
     <div class="card">${table.html}</div>
   `;
   const card = container.querySelector('.card:last-child');
