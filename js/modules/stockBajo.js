@@ -12,6 +12,9 @@ export function productosBajoMinimo(products) {
     .filter((p) => p.estado !== 'inactivo' && Number(p.stock) <= Number(p.stockMinimo ?? 0))
     .map((p) => ({
       nombre: p.nombre,
+      // La presentación es lo que hace falta para PEDIR: no es lo mismo que se
+      // acabe el galón a que se acabe el litro del mismo aceite.
+      presentacion: [p.presentacion, p.viscosidad].filter(Boolean).join(' · '),
       stock: Number(p.stock) || 0,
       minimo: Number(p.stockMinimo ?? 0),
       agotado: Number(p.stock) <= 0,
@@ -43,7 +46,8 @@ export function stockBajoHtml(products, { max = 12, titulo = 'Hay que pedir' } =
       <div class="stock-bajo-grid">
         ${visibles.map((p) => `
           <div class="stock-item${p.agotado ? ' agotado' : ''}">
-            <span class="stock-item-nombre" title="${escapeHtml(p.nombre)}">${escapeHtml(p.nombre)}</span>
+            <span class="stock-item-nombre" title="${escapeHtml(p.nombre)}${p.presentacion ? ` — ${escapeHtml(p.presentacion)}` : ''}">${escapeHtml(p.nombre)}</span>
+            ${p.presentacion ? `<span class="stock-item-pres">${escapeHtml(p.presentacion)}</span>` : ''}
             <span class="stock-item-cifra">
               ${p.agotado ? 'Agotado' : `Quedan <b>${p.stock}</b>`}
               <span class="stock-item-min">mín. ${p.minimo}</span>

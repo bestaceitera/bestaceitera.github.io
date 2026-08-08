@@ -276,7 +276,28 @@ button.chip-estado { cursor: pointer; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.stock-item-cifra { font-size: 12.5px; color: var(--text-muted); display: flex; gap: 8px; align-items: baseline; }
+.stock-item-pres {
+  /* La presentación es lo que decide QUÉ pedir (galón o litro), así que va
+     visible bajo el nombre, no escondida en el tooltip. */
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 1px 6px;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* margin-top:auto empuja la cifra al fondo: así las tarjetas con presentación y
+   las que no la tienen alinean el número a la misma altura y la cuadrícula se
+   lee de corrido en vez de escalonada. */
+.stock-item-cifra {
+  font-size: 12.5px; color: var(--text-muted);
+  display: flex; gap: 8px; align-items: baseline;
+  margin-top: auto;
+}
 .stock-item.agotado .stock-item-cifra { color: var(--danger); font-weight: 600; }
 .stock-item-min { margin-left: auto; font-size: 11.5px; opacity: .75; }
 .stock-bajo-resto { margin-top: 9px; font-size: 12.5px; color: var(--text-muted); }
