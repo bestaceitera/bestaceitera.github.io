@@ -2,6 +2,7 @@ import { getAll } from '../data.js';
 import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, todayISO, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
+import { cuadrarPorDia, CAJA_CHICA_POR_DEFECTO } from './cuadreCore.js';
 
 /**
  * Trae de la base SOLO los registros del rango pedido, en vez de descargar la
@@ -260,54 +261,6 @@ async function render(container) {
   }
 
   // ---------------- Caja: cuadre día por día ----------------
-  /**
-   * Cuánto efectivo se queda en el negocio como caja chica cuando ese día no se
-   * registró un fondo inicial. Si sí se registró, manda el monto real de ese día.
-   */
-  const CAJA_CHICA_POR_DEFECTO = 105;
-
-  const ENTRADAS = ['venta', 'servicio', 'abono', 'otro_ingreso', 'devolucion'];
-  const SALIDAS = ['gasto', 'compra', 'vuelto', 'retiro', 'deposito'];
-
-  /**
-   * Arma el cuadre de cada día a partir de los movimientos de caja.
-   *
-   *   efectivo en caja = caja chica + entradas − salidas
-   *   a depositar      = efectivo en caja − caja chica
-   *
-   * La caja chica no se deposita nunca: se queda en el negocio para dar vueltos.
-   * Los depósitos que ya se hicieron cuentan como salida, así que "a depositar"
-   * siempre muestra lo que TODAVÍA falta llevar al banco, no lo del día entero.
-   */
-  function cuadrarPorDia(movimientos) {
-    const dias = new Map();
-    for (const m of movimientos) {
-      const dia = m.fecha || '';
-      if (!dia) continue;
-      if (!dias.has(dia)) dias.set(dia, { fecha: dia, cajaChica: 0, tuvoFondo: false, entradas: 0, salidas: 0, vueltos: 0, depositado: 0, detalle: {} });
-      const d = dias.get(dia);
-      const monto = Number(m.monto) || 0;
-      if (m.categoria === 'fondo_inicial') { d.cajaChica += monto; d.tuvoFondo = true; continue; }
-      if (ENTRADAS.includes(m.categoria)) d.entradas += monto;
-      else if (SALIDAS.includes(m.categoria)) d.salidas += monto;
-      if (m.categoria === 'vuelto') d.vueltos += monto;
-      if (m.categoria === 'deposito') d.depositado += monto;
-      d.detalle[m.categoria] = round2((d.detalle[m.categoria] || 0) + monto);
-    }
-    return [...dias.values()]
-      .map((d) => {
-        const cajaChica = d.tuvoFondo ? round2(d.cajaChica) : CAJA_CHICA_POR_DEFECTO;
-        const enCaja = round2(cajaChica + d.entradas - d.salidas);
-        // El vuelto no es dinero que entró ni que se gastó: es parte del billete
-        // del cliente que se le regresó. Se descuenta de ambos lados para que las
-        // columnas coincidan con lo que se cuenta a mano. El total no cambia.
-        d.entradas = round2(d.entradas - d.vueltos);
-        d.salidas = round2(d.salidas - d.vueltos);
-        return { ...d, cajaChica, enCaja, aDepositar: round2(Math.max(0, enCaja - cajaChica)) };
-      })
-      .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
-  }
-
   let presetCaja = 'mes';
 
   async function renderCaja(el) {
@@ -321,15 +274,15 @@ async function render(container) {
       ]);
       const dias = cuadrarPorDia(movimientos);
       const totalDepositar = round2(dias.reduce((s, d) => s + d.aDepositar, 0));
-      const totalVendido = round2(dias.reduce((s, d) => s + d.entradas, 0));
+      const totalVendido = round2(dias.reduce((s, d) => s + d.totalEntradas, 0));
       const totalDepositado = round2(dias.reduce((s, d) => s + d.depositado, 0));
 
       const rows = dias.map((d) => ({
         fecha: d.fecha,
         dia: formatDateLong(d.fecha),
         cajaChica: formatQ(d.cajaChica) + (d.tuvoFondo ? '' : ' *'),
-        entradas: formatQ(d.entradas),
-        salidas: formatQ(round2(d.salidas - d.depositado)),
+        entradas: formatQ(d.totalEntradas),
+        salidas: formatQ(round2(d.totalSalidas - d.depositado)),
         depositado: formatQ(d.depositado),
         enCaja: formatQ(d.enCaja),
         aDepositar: formatQ(d.aDepositar),

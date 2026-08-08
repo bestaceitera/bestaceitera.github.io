@@ -201,3 +201,31 @@ tbody tr:hover{background:var(--bg)}
 @media (prefers-color-scheme: dark) {
   .sin-conexion { background: #3a2a10; color: #f6d9a8; border-bottom-color: #6b4d1c; }
 }
+
+/* Barra de estado de cada día en Ventas: si ya se depositó y si ya se cerró.
+   Va debajo del encabezado del día para que se lea de corrido sin abrir nada. */
+.dia-estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12.5px;
+}
+.dia-estado .spacer { flex: 1 1 auto; }
+.chip-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.chip-estado.ok { background: var(--success-light); color: var(--success); border-color: var(--success); }
+.chip-estado.neutro { background: transparent; color: var(--text-muted); border-color: var(--border); font-weight: 400; }
+button.chip-estado { cursor: pointer; }

@@ -1,6 +1,8 @@
 import { getAll, getById, getByDateRange, addRecord, updateRecord, removeRecord, nextFolio, adjustStockAtomic } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { openUsoPropioForm } from './usoPropio.js';
+import { cuadrePorFecha } from './cuadreCore.js';
+import { abrirCierreDia, abrirDepositoDia } from './cierreDia.js';
 import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast, confirmDialog, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
@@ -26,6 +28,10 @@ async function render(container, profile) {
   // que se está viendo.
   let sales = [];
   let truncado = false;
+  // Estado de cada día: cuánto efectivo quedó, cuánto falta depositar y si ya se
+  // cerró. Es lo que permite ver de un vistazo qué días están listos y cuáles no.
+  let porDia = new Map();
+  let cierres = new Map();
   let busqueda = '';
   let pagina = 1;
   let rango = rangoGuardado || applyRangePreset('mes');
@@ -57,15 +63,23 @@ async function render(container, profile) {
     cargando = true;
     pintar();
     try {
-      const r = await getByDateRange('sales', rango, { max: 1500 });
+      const [r, movimientos, closings] = await Promise.all([
+        getByDateRange('sales', rango, { max: 1500 }),
+        getByDateRange('cashMovements', rango, { max: 4000 }),
+        getByDateRange('cashClosings', rango, { max: 500 }),
+      ]);
       if (mio !== peticion) return;
       // Dentro de un mismo día se ordena por hora: la más reciente arriba.
       sales = r.filas.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       truncado = r.truncado;
+      porDia = cuadrePorFecha(movimientos.filas);
+      cierres = new Map(closings.filas.map((c) => [c.fecha, c]));
     } catch (err) {
       if (mio !== peticion) return;
       sales = [];
       truncado = false;
+      porDia = new Map();
+      cierres = new Map();
       toast('No se pudieron cargar las ventas: ' + err.message, 'danger', 6000);
     } finally {
       if (mio === peticion) { cargando = false; pintar(); }
@@ -97,6 +111,43 @@ async function render(container, profile) {
       const empleados = (s.empleadosComision || []).map((e) => e.empleadoNombre).join(' ');
       return `${s.numero} ${s.clienteNombre || ''} ${empleados}`.toLowerCase().includes(q);
     });
+  }
+
+  /**
+   * Barra de estado de un día: si ya se cerró y si ya se depositó su efectivo.
+   * La idea es ver de un vistazo qué días están listos y cuáles siguen pendientes,
+   * sin tener que entrar a Caja ni a Reportes.
+   */
+  function estadoDelDia(fecha) {
+    const dia = porDia.get(fecha);
+    const cierre = cierres.get(fecha);
+    // Sin movimientos de efectivo no hay nada que cerrar ni depositar (por
+    // ejemplo, un día en que todo se cobró por transferencia).
+    if (!dia) return '';
+
+    const falta = dia.aDepositar;
+    const depositado = dia.depositado;
+
+    const chipCierre = cierre
+      ? `<button class="btn btn-sm chip-estado ok" data-cierre="${fecha}">
+           ✓ Día cerrado${cierre.estado !== 'cuadrada' ? ` · ${cierre.estado === 'sobrante' ? 'sobró' : 'faltó'} ${formatQ(Math.abs(cierre.diferencia))}` : ''}
+         </button>`
+      : `<button class="btn btn-secondary btn-sm" data-cierre="${fecha}">Cerrar día</button>`;
+
+    const chipDeposito = falta <= 0.009
+      ? (depositado > 0
+          ? `<span class="chip-estado ok">✓ Depositado ${formatQ(depositado)}</span>`
+          : `<span class="chip-estado neutro">Sin efectivo que depositar</span>`)
+      : `<button class="btn btn-secondary btn-sm" data-deposito="${fecha}">
+           Depositar ${formatQ(falta)}${depositado > 0 ? ' (falta)' : ''}
+         </button>`;
+
+    return `<div class="dia-estado">
+      <span class="text-muted">En caja ${formatQ(dia.enCaja)} · caja chica ${formatQ(dia.cajaChica)}</span>
+      <span class="spacer"></span>
+      ${chipDeposito}
+      ${chipCierre}
+    </div>`;
   }
 
   function pintar() {
@@ -132,6 +183,7 @@ async function render(container, profile) {
           <span class="dia-fecha">${escapeHtml(formatDateLong(d.fecha))}</span>
           <span class="dia-resumen">${d.ventas.length} venta${d.ventas.length === 1 ? '' : 's'} · <b>${formatQ(d.total)}</b></span>
         </div>
+        ${estadoDelDia(d.fecha)}
         <div class="table-wrap"><table>
           <thead><tr><th>No.</th><th>Cliente</th><th>Pago</th><th>Total</th><th>Realizada por</th><th></th></tr></thead>
           <tbody>${d.ventas.map((s) => `<tr>
@@ -178,9 +230,17 @@ async function render(container, profile) {
     openUsoPropioForm({ products, empleados, onSaved: () => render(container, profile) });
   });
   card.addEventListener('click', (e) => {
-    const id = e.target.dataset.view;
-    const venta = id && sales.find((s) => s.id === id);
-    if (venta) viewDetail(venta);
+    const boton = e.target.closest('[data-view], [data-cierre], [data-deposito]');
+    if (!boton) return;
+    const { view, cierre, deposito } = boton.dataset;
+    if (view) {
+      const venta = sales.find((s) => s.id === view);
+      if (venta) viewDetail(venta);
+    } else if (cierre) {
+      abrirCierreDia({ fecha: cierre, dia: porDia.get(cierre), cierre: cierres.get(cierre), onSaved: cargar });
+    } else if (deposito) {
+      abrirDepositoDia({ fecha: deposito, dia: porDia.get(deposito), onSaved: cargar });
+    }
   });
   await cargar();
 

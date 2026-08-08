@@ -1,5 +1,6 @@
 import { getAll, getByDateRange, addRecord, updateRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
+import { computeExpected } from './cuadreCore.js';
 import { renderTable, openModal, closeModal, toast, confirmDialog, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, formatDateTime, formatDateLong, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
@@ -30,47 +31,6 @@ async function getTodayMovements() {
  */
 function responsableDe(m) {
   return m.responsable || m.usuarioNombre || '';
-}
-
-/**
- * El VUELTO no es un egreso ni dinero que entró.
- *
- * Si el cliente paga una venta de Q90 con un billete de Q100, se registra que
- * entraron Q100 y que salieron Q10. Sumado en bruto, la pantalla decía
- * "Ingresos Q100 · Egresos Q10", cuando lo que de verdad entró al cajón fueron
- * Q90 y no se gastó nada. El total esperado siempre estuvo bien (Q100 − Q10 =
- * Q90), pero los dos números de arriba no cuadraban con lo que uno cuenta a
- * mano. Por eso el vuelto se descuenta de lo que entró, en vez de mostrarse
- * como si fuera un gasto del negocio.
- */
-function computeExpected(movements) {
-  const fondoInicial = movements.filter((m) => m.categoria === 'fondo_inicial').reduce((s, m) => s + m.monto, 0);
-  const byCat = (cat) => round2(movements.filter((m) => m.categoria === cat).reduce((s, m) => s + m.monto, 0));
-  const vueltos = byCat('vuelto');
-
-  const entradasBrutas = round2(movements
-    .filter((m) => m.tipo === 'entrada' && m.categoria !== 'fondo_inicial')
-    .reduce((s, m) => s + m.monto, 0));
-  const salidasBrutas = round2(movements
-    .filter((m) => m.tipo === 'salida')
-    .reduce((s, m) => s + m.monto, 0));
-
-  // Lo que realmente entró y lo que realmente salió del negocio.
-  const totalEntradas = round2(entradasBrutas - vueltos);
-  const totalSalidas = round2(salidasBrutas - vueltos);
-  const esperado = round2(fondoInicial + totalEntradas - totalSalidas);
-
-  return {
-    fondoInicial, totalEntradas, totalSalidas, esperado,
-    // El desglose del cuadre va en BRUTO a propósito: ahí el vuelto aparece en
-    // su propia línea ("− Vueltos entregados"), así que restarlo aquí también
-    // lo descontaría dos veces. Un vuelto puede venir de una venta o de una
-    // orden de servicio, y en el desglose se ve de dónde salió.
-    ventas: byCat('venta'), servicios: byCat('servicio'),
-    otrosIngresos: byCat('abono') + byCat('otro_ingreso'),
-    compras: byCat('compra'), gastos: byCat('gasto'), depositos: byCat('deposito'), vueltos,
-    retiros: byCat('retiro'), devoluciones: byCat('devolucion'),
-  };
 }
 
 async function render(container) {
