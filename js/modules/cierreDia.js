@@ -6,7 +6,7 @@
 import { addRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast } from '../ui.js';
-import { escapeHtml, formatQ, round2, formatDateLong, nowTimeHM } from '../utils.js';
+import { escapeHtml, formatQ, round2, formatDateLong, nowTimeHM, compressImageForFirestore } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 
 /**
@@ -147,6 +147,11 @@ export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
     <label>Monto depositado (Q)
       <input type="number" id="dd-monto" min="0.01" step="0.01" value="${sugerido || ''}">
     </label>
+    <label>Foto de la boleta
+      <input type="file" id="dd-foto" accept="image/*" capture="environment">
+    </label>
+    <img id="dd-preview" class="photo-preview" hidden>
+    <div id="dd-aviso"></div>
     <label>Observaciones (opcional) <textarea id="dd-obs" rows="2"></textarea></label>
     <div class="modal-actions">
       <button type="button" class="btn btn-secondary" id="cancel-form">Cancelar</button>
@@ -157,19 +162,60 @@ export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
   const $ = (id) => document.getElementById(id);
   $('cancel-form').addEventListener('click', closeModal);
 
+  let archivo = null;
+  $('dd-foto').addEventListener('change', () => {
+    archivo = $('dd-foto').files[0] || null;
+    const prev = $('dd-preview');
+    if (archivo) { prev.src = URL.createObjectURL(archivo); prev.hidden = false; $('dd-aviso').innerHTML = ''; }
+    else { prev.hidden = true; }
+  });
+
+  // Avisar de la foto faltante SIN bloquear: el depósito ya se hizo en el banco,
+  // así que impedir registrarlo dejaría la caja descuadrada por un trámite. Se
+  // registra igual, marcado como pendiente de comprobante, y el reporte lo lista
+  // para que después se le tome la foto.
+  let avisado = false;
+
   $('dd-save').addEventListener('click', async () => {
     const banco = $('dd-banco').value.trim();
     const monto = Number($('dd-monto').value);
     if (!banco) { toast('Escribe a qué banco se depositó.', 'danger'); $('dd-banco').focus(); return; }
     if (!monto || monto <= 0) { toast('Escribe cuánto se depositó.', 'danger'); $('dd-monto').focus(); return; }
+
+    if (!archivo && !avisado) {
+      avisado = true;
+      $('dd-aviso').innerHTML = `<div class="aviso-foto">
+        ⚠ <b>Todavía no subiste la foto de la boleta.</b><br>
+        Súbela arriba, o vuelve a tocar el botón para registrarlo sin ella.
+        Va a quedar en la lista de <b>comprobantes pendientes</b> hasta que se agregue.
+      </div>`;
+      $('dd-save').textContent = 'Registrar sin foto';
+      $('dd-save').classList.add('btn-sin-foto');
+      toast('Falta la foto de la boleta.', 'info', 5000);
+      return;
+    }
+
     const btn = $('dd-save');
     btn.disabled = true;
     btn.textContent = 'Guardando…';
     try {
+      let fotoBase64 = null;
+      if (archivo) {
+        btn.textContent = 'Procesando foto…';
+        try {
+          fotoBase64 = await compressImageForFirestore(archivo);
+        } catch {
+          // Si la imagen falla, el depósito se guarda igual: lo importante es que
+          // el dinero quede registrado, la foto se puede agregar después.
+          fotoBase64 = null;
+          toast('No se pudo procesar la foto; el depósito se guardará sin comprobante.', 'info', 5000);
+        }
+        btn.textContent = 'Guardando…';
+      }
       const user = getCurrentUser();
       const depositId = await addRecord('deposits', {
         fecha, hora: nowTimeHM(), banco, boleta: $('dd-boleta').value.trim(),
-        monto, observaciones: $('dd-obs').value.trim(), fotoBase64: null,
+        monto, observaciones: $('dd-obs').value.trim(), fotoBase64,
         usuarioId: user?.uid || null, usuarioNombre: user?.nombre || '',
       });
       // La salida de caja lleva la fecha DEL DÍA depositado, no la de hoy: si no,
@@ -178,7 +224,10 @@ export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
         tipo: 'salida', categoria: 'deposito', monto,
         motivo: `Depósito ${banco}`, referenciaId: depositId, fecha,
       });
-      toast(`Depósito de ${formatQ(monto)} registrado.`, 'success', 5000);
+      toast(archivo
+        ? `Depósito de ${formatQ(monto)} registrado con su foto.`
+        : `Depósito de ${formatQ(monto)} registrado. Falta subir la foto de la boleta.`,
+        archivo ? 'success' : 'info', 6000);
       closeModal();
       if (onSaved) onSaved();
     } catch (err) {

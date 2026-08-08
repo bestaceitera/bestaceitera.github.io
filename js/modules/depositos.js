@@ -90,6 +90,7 @@ async function render(container) {
           <input type="file" name="foto" accept="image/*" capture="environment">
         </label>
         <img id="dep-preview" class="photo-preview" hidden>
+        <div id="dep-aviso"></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" id="cancel-form">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="dep-save">Guardar depósito</button>
@@ -109,10 +110,25 @@ async function render(container) {
       }
     });
 
+    // Igual que al depositar desde Ventas: si falta la foto se avisa, pero no se
+    // bloquea. El dinero ya se depositó; impedir registrarlo descuadraría la caja.
+    let avisado = false;
     document.getElementById('dep-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
       const saveBtn = document.getElementById('dep-save');
+      if (!selectedFile && !avisado) {
+        avisado = true;
+        document.getElementById('dep-aviso').innerHTML = `<div class="aviso-foto">
+          ⚠ <b>Todavía no subiste la foto de la boleta.</b><br>
+          Súbela arriba, o vuelve a tocar el botón para registrarlo sin ella.
+          Va a quedar en la lista de <b>comprobantes pendientes</b> hasta que se agregue.
+        </div>`;
+        saveBtn.textContent = 'Guardar sin foto';
+        saveBtn.classList.add('btn-sin-foto');
+        toast('Falta la foto de la boleta.', 'info', 5000);
+        return;
+      }
       saveBtn.disabled = true;
       saveBtn.textContent = 'Guardando…';
       try {

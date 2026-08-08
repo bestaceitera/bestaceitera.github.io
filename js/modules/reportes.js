@@ -30,12 +30,13 @@ async function render(container) {
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="comisiones">Comisiones</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="usopropio">Uso propio</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="bancos">Bancos</button>
+      <button class="btn btn-secondary btn-sm tab-btn" data-tab="comprobantes">Comprobantes</button>
     </div>
     <div id="rep-content" class="mt-16"></div>
   `;
   const tabButtons = container.querySelectorAll('.tab-btn');
   const content = container.querySelector('#rep-content');
-  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones, usopropio: renderUsoPropio, bancos: renderBancos };
+  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones, usopropio: renderUsoPropio, bancos: renderBancos, comprobantes: renderComprobantes };
 
   function setActiveTab(tab) {
     tabButtons.forEach((b) => {
@@ -175,6 +176,84 @@ async function render(container) {
     document.getElementById('rep-cli-table').innerHTML = t.html;
     t.mount(document.getElementById('rep-cli-table'));
     bindExportButtons(el, { title: 'Clientes facturados / frecuentes', columns: cols, getRows: () => rows, filename: 'reporte_clientes' });
+  }
+
+  // ---------------- Comprobantes de depósito ----------------
+  /**
+   * Las boletas de los depósitos, y sobre todo CUÁLES FALTAN.
+   *
+   * Registrar un depósito sin foto está permitido a propósito (el dinero ya se
+   * depositó, bloquearlo dejaría la caja descuadrada). El control está aquí: esta
+   * pantalla lista los que quedaron sin comprobante para ir a tomarles la foto.
+   */
+  let presetComp = 'mes';
+  let soloPendientes = false;
+
+  async function renderComprobantes(el) {
+    let range = applyRangePreset(presetComp);
+
+    async function draw() {
+      el.innerHTML = '<div class="empty-state">Cargando…</div>';
+      const depositos = await porRango('deposits', range, { max: 500 });
+      const conFoto = depositos.filter((d) => d.fotoBase64);
+      const sinFoto = depositos.filter((d) => !d.fotoBase64);
+      const montoSinFoto = round2(sinFoto.reduce((s, d) => s + (Number(d.monto) || 0), 0));
+
+      const lista = soloPendientes ? sinFoto : depositos;
+
+      el.innerHTML = `
+        <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}</div>
+        <div class="grid grid-3 mt-16">
+          <div class="stat-card"><div class="label">Depósitos del período</div><div class="value">${depositos.length}</div>
+            <div class="sub">${formatQ(round2(depositos.reduce((s, d) => s + (Number(d.monto) || 0), 0)))}</div></div>
+          <div class="stat-card"><div class="label">Con su boleta</div>
+            <div class="value" style="color:var(--success)">${conFoto.length}</div></div>
+          <div class="stat-card"${sinFoto.length ? ' style="border-color:var(--danger);background:var(--danger-light)"' : ''}>
+            <div class="label">Falta la boleta</div>
+            <div class="value"${sinFoto.length ? ' style="color:var(--danger)"' : ''}>${sinFoto.length}</div>
+            ${sinFoto.length ? `<div class="sub">${formatQ(montoSinFoto)} sin respaldo</div>` : ''}</div>
+        </div>
+        <div class="toolbar mt-16">
+          <button class="btn btn-sm ${soloPendientes ? 'btn-secondary' : 'btn-primary'}" data-filtro="todos">Todos</button>
+          <button class="btn btn-sm ${soloPendientes ? 'btn-primary' : 'btn-secondary'}" data-filtro="pendientes">
+            Solo los que falta boleta${sinFoto.length ? ` (${sinFoto.length})` : ''}
+          </button>
+        </div>
+        ${lista.length ? `<div class="comprobantes-grid mt-16">
+          ${lista.map((d) => `
+            <div class="comprobante${d.fotoBase64 ? '' : ' sin-foto'}">
+              ${d.fotoBase64
+                ? `<img src="${d.fotoBase64}" alt="Boleta" data-ver="${d.id}">`
+                : `<div class="comprobante-vacio">Sin boleta</div>`}
+              <div class="comprobante-datos">
+                <b>${formatQ(d.monto)}</b>
+                <span>${escapeHtml(formatDateLong(d.fecha))}</span>
+                <span class="text-muted">${escapeHtml(d.banco || '')}${d.boleta ? ` · No. ${escapeHtml(d.boleta)}` : ''}</span>
+                <span class="text-muted" style="font-size:11.5px">${escapeHtml(d.usuarioNombre || '')}</span>
+              </div>
+            </div>`).join('')}
+        </div>`
+        : `<div class="empty-state mt-16">${soloPendientes
+            ? 'Todos los depósitos del período tienen su boleta. ✓'
+            : 'No hubo depósitos en estas fechas.'}</div>`}
+      `;
+
+      el.querySelectorAll('[data-filtro]').forEach((b) => b.addEventListener('click', () => {
+        soloPendientes = b.dataset.filtro === 'pendientes';
+        draw();
+      }));
+      // Tocar la foto la abre grande, que es como se lee un número de boleta.
+      el.querySelectorAll('[data-ver]').forEach((img) => img.addEventListener('click', () => {
+        const d = depositos.find((x) => x.id === img.dataset.ver);
+        openModal(`Boleta — ${d.banco || ''} · ${formatQ(d.monto)}`, `
+          <img src="${d.fotoBase64}" class="photo-preview" style="max-width:100%">
+          <p class="mt-16">${escapeHtml(formatDateLong(d.fecha))}${d.boleta ? ` · Boleta No. ${escapeHtml(d.boleta)}` : ''}</p>
+          ${d.observaciones ? `<p class="text-muted">${escapeHtml(d.observaciones)}</p>` : ''}
+        `);
+      }));
+      bindRangeControls(el, (r, preset) => { range = r; presetComp = preset; draw(); }, { activo: presetComp });
+    }
+    await draw();
   }
 
   // ---------------- Bancos ----------------
