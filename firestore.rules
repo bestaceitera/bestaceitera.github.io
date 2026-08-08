@@ -62,6 +62,12 @@ service cloud.firestore {
     match /brands/{id} {
       allow read, create, update, delete: if signedIn();
     }
+    // Bancos donde se reciben transferencias y se hacen depósitos. Es un catálogo
+    // como los otros: el mostrador necesita poder agregar uno al momento si entra
+    // una transferencia de un banco que todavía no estaba en la lista.
+    match /banks/{id} {
+      allow read, create, update, delete: if signedIn();
+    }
     // El catálogo de servicios y sus precios los define el administrador.
     match /services/{id} {
       allow read: if signedIn();

@@ -3,6 +3,7 @@ import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, compressImageForFirestore, todayISO, nowTimeHM } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
+import { listarBancos } from './bancos.js';
 
 // El período elegido se guarda fuera de render() para que no se pierda cuando la
 // pantalla se refresca sola al llegar un cambio desde otro dispositivo.
@@ -67,12 +68,17 @@ async function render(container) {
     }
   });
 
-  function openDepositForm() {
+  async function openDepositForm() {
     let selectedFile = null;
+    // El banco se elige del catálogo para que el control por banco cuadre: escrito
+    // a mano, "Banrural" y "banrural" quedarían como dos bancos distintos.
+    const bancos = await listarBancos();
     openModal('Registrar depósito bancario', `
       <form id="dep-form">
         <div class="form-row">
-          <label>Banco <input name="banco" required></label>
+          <label>Banco ${bancos.length
+            ? `<select name="banco" required><option value="">— Elige el banco —</option>${bancos.map((b) => `<option value="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}</select>`
+            : `<input name="banco" required placeholder="Agrégalos en Almacén → Bancos">`}</label>
           <label>No. de boleta (opcional) <input name="boleta"></label>
         </div>
         <div class="form-row">

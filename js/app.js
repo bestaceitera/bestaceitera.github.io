@@ -18,6 +18,7 @@ import compras from './modules/compras.js';
 import proveedores from './modules/proveedores.js';
 import categorias from './modules/categorias.js';
 import marcas from './modules/marcas.js';
+import bancos from './modules/bancos.js';
 import gastos from './modules/gastos.js';
 import reportes from './modules/reportes.js';
 import usuarios from './modules/usuarios.js';
@@ -33,6 +34,7 @@ registerRoute({ hash: 'inventario', label: 'Inventario', icon: '📦', section: 
 registerRoute({ hash: 'productos', label: 'Productos', icon: '🛢️', section: 'Almacén', render: productos.render });
 registerRoute({ hash: 'categorias', label: 'Categorías', icon: '🏷️', section: 'Almacén', render: categorias.render });
 registerRoute({ hash: 'marcas', label: 'Marcas', icon: '⭐', section: 'Almacén', render: marcas.render });
+registerRoute({ hash: 'bancos', label: 'Bancos', icon: '🏦', section: 'Almacén', render: bancos.render });
 registerRoute({ hash: 'servicios', label: 'Catálogo de servicios', icon: '🧰', section: 'Almacén', roles: ['admin'], render: servicios.render });
 
 registerRoute({ hash: 'compras', label: 'Compras', icon: '🛒', section: 'Administración', roles: ['admin'], render: compras.render });

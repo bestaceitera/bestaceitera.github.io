@@ -29,12 +29,13 @@ async function render(container) {
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="caja">Caja</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="comisiones">Comisiones</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="usopropio">Uso propio</button>
+      <button class="btn btn-secondary btn-sm tab-btn" data-tab="bancos">Bancos</button>
     </div>
     <div id="rep-content" class="mt-16"></div>
   `;
   const tabButtons = container.querySelectorAll('.tab-btn');
   const content = container.querySelector('#rep-content');
-  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones, usopropio: renderUsoPropio };
+  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones, usopropio: renderUsoPropio, bancos: renderBancos };
 
   function setActiveTab(tab) {
     tabButtons.forEach((b) => {
@@ -174,6 +175,99 @@ async function render(container) {
     document.getElementById('rep-cli-table').innerHTML = t.html;
     t.mount(document.getElementById('rep-cli-table'));
     bindExportButtons(el, { title: 'Clientes facturados / frecuentes', columns: cols, getRows: () => rows, filename: 'reporte_clientes' });
+  }
+
+  // ---------------- Bancos ----------------
+  /**
+   * Dinero que NO pasó por la caja: lo que entró por transferencia y lo que se
+   * llevó al banco. Como el efectivo tiene su propio cuadre, esto es lo único que
+   * dice cuánto hay en cada cuenta y de dónde salió.
+   */
+  let presetBancos = 'mes';
+
+  async function renderBancos(el) {
+    let range = applyRangePreset(presetBancos);
+
+    async function draw() {
+      el.innerHTML = '<div class="empty-state">Cargando…</div>';
+      const [ventas, ordenes, depositos] = await Promise.all([
+        porRango('sales', range, { max: 4000 }),
+        porRango('serviceOrders', range, { max: 3000 }),
+        porRango('deposits', range, { max: 1000 }),
+      ]);
+
+      // Lo que entró por transferencia, venga de una venta o de una orden.
+      const entradas = [
+        ...ventas.filter((v) => v.bancoNombre).map((v) => ({
+          fecha: v.fecha, banco: v.bancoNombre, concepto: `Venta ${v.numero}`,
+          cliente: v.clienteNombre || '', monto: Number(v.total) || 0 })),
+        ...ordenes.filter((o) => o.bancoNombre).map((o) => ({
+          fecha: o.fecha, banco: o.bancoNombre, concepto: `Orden ${o.numero}`,
+          cliente: o.clienteNombre || '', monto: Number(o.total) || 0 })),
+      ].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+
+      const porBanco = {};
+      const anota = (banco, campo, monto) => {
+        porBanco[banco] = porBanco[banco] || { banco, recibido: 0, depositado: 0 };
+        porBanco[banco][campo] = round2(porBanco[banco][campo] + monto);
+      };
+      entradas.forEach((e) => anota(e.banco, 'recibido', e.monto));
+      depositos.forEach((d) => anota(d.banco || 'Sin banco', 'depositado', Number(d.monto) || 0));
+
+      const bancos = Object.values(porBanco)
+        .map((b) => ({ ...b, total: round2(b.recibido + b.depositado) }))
+        .sort((a, b) => b.total - a.total);
+
+      const totalRecibido = round2(entradas.reduce((s, e) => s + e.monto, 0));
+      const totalDepositado = round2(depositos.reduce((s, d) => s + (Number(d.monto) || 0), 0));
+
+      const rows = entradas.map((e) => ({
+        fecha: e.fecha, banco: e.banco, concepto: e.concepto,
+        cliente: e.cliente, monto: formatQ(e.monto),
+      }));
+      const cols = [
+        { key: 'fecha', label: 'Fecha' },
+        { key: 'banco', label: 'Banco' },
+        { key: 'concepto', label: 'Concepto' },
+        { key: 'cliente', label: 'Cliente' },
+        { key: 'monto', label: 'Monto' },
+      ];
+
+      el.innerHTML = `
+        <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}<div class="spacer"></div>${exportButtonsHtml()}</div>
+        <div class="grid grid-3 mt-16">
+          <div class="stat-card" style="border-color:var(--primary);background:var(--primary-light)">
+            <div class="label">Recibido por transferencia</div><div class="value">${formatQ(totalRecibido)}</div>
+            <div class="sub">${entradas.length} cobro${entradas.length === 1 ? '' : 's'} — no pasó por la caja</div></div>
+          <div class="stat-card"><div class="label">Depositado en efectivo</div><div class="value">${formatQ(totalDepositado)}</div>
+            <div class="sub">${depositos.length} depósito${depositos.length === 1 ? '' : 's'}</div></div>
+          <div class="stat-card"><div class="label">Entró al banco en total</div>
+            <div class="value">${formatQ(round2(totalRecibido + totalDepositado))}</div></div>
+        </div>
+        <div class="periodo-resumen mt-16">
+          <span>Del ${escapeHtml(range.from)} al ${escapeHtml(range.to)}</span>
+          <span>Dinero que no está en el cajón</span>
+        </div>
+        ${bancos.length ? `<div class="section-title">Cuánto entró a cada banco</div>
+        <div class="card"><div class="table-wrap"><table>
+          <thead><tr><th>Banco</th><th>Por transferencia</th><th>Por depósito</th><th>Total</th></tr></thead>
+          <tbody>${bancos.map((b) => `<tr>
+            <td><b>${escapeHtml(b.banco)}</b></td><td>${formatQ(b.recibido)}</td>
+            <td>${formatQ(b.depositado)}</td><td><b>${formatQ(b.total)}</b></td></tr>`).join('')}</tbody>
+        </table></div></div>` : ''}
+        <div class="section-title">Cobros por transferencia</div>
+        <div class="card"><div id="rep-bancos-table"></div></div>
+      `;
+
+      const t = renderTable({ columns: cols, rows, pageSize: 15,
+        emptyMessage: 'No hubo cobros por transferencia en estas fechas.' });
+      const cont = document.getElementById('rep-bancos-table');
+      cont.innerHTML = t.html;
+      t.mount(cont);
+      bindExportButtons(el, { title: 'Cobros por transferencia', columns: cols, getRows: () => rows, filename: 'bancos' });
+      bindRangeControls(el, (r, preset) => { range = r; presetBancos = preset; draw(); }, { activo: presetBancos });
+    }
+    await draw();
   }
 
   // ---------------- Uso propio ----------------

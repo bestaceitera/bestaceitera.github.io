@@ -5,6 +5,7 @@ import { renderTable, openModal, closeModal, toast, productSearch, dateRangePres
 import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
+import { listarBancos } from './bancos.js';
 
 // El período elegido se guarda fuera de render() para que no se pierda cuando la
 // pantalla se refresca sola al llegar un cambio desde otro dispositivo.
@@ -77,15 +78,17 @@ async function render(container) {
         : '<p class="text-muted">Ninguno</p>'}
       ${o.observaciones ? `<p class="mt-16"><b>Observaciones:</b> ${escapeHtml(o.observaciones)}</p>` : ''}
       <p class="mt-16">Servicios: ${formatQ(o.costoServicios ?? 0)} &nbsp; Productos: ${formatQ(o.costoProductos)}${o.costoManoObra ? ` &nbsp; Mano de obra: ${formatQ(o.costoManoObra)}` : ''}</p>
+      <p><b>Forma de pago:</b> ${escapeHtml(o.formaPago || '')}${o.bancoNombre ? ` — <b>${escapeHtml(o.bancoNombre)}</b>` : ''}</p>
       <p class="text-right"><b>Total: ${formatQ(o.total)}</b></p>
     `);
   }
 
   async function openOrderForm() {
-    const [services, products, users] = await Promise.all([
+    const [services, products, users, bancos] = await Promise.all([
       getAll('services', { order: 'nombre' }),
       getAll('products', { order: 'nombre' }),
       getAll('users', { order: 'nombre' }),
+      listarBancos(),
     ]);
     // Los empleados son quienes realizan el servicio (no las cuentas de acceso).
     const activeUsers = users.filter((u) => u.tipo === 'empleado' && u.activo !== false);
@@ -174,6 +177,13 @@ async function render(container) {
         <label>Parte en efectivo (Q) <input type="number" id="os-mixto-efectivo" min="0" step="0.01" value="0"></label>
         <label>Parte tarjeta/transferencia (Q) <input type="number" id="os-mixto-otro" min="0" step="0.01" value="0"></label>
       </div>
+      <label id="os-banco-box" style="display:none">¿A qué banco te la hicieron?
+        <select id="os-banco">
+          <option value="">— Elige el banco —</option>
+          ${bancos.map((b) => `<option value="${b.id}" data-nombre="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}
+        </select>
+        ${bancos.length ? '' : '<span class="text-muted" style="font-size:12.5px">No hay bancos registrados. Agrégalos en Almacén → Bancos.</span>'}
+      </label>
 
       <p class="text-right mt-16"><b id="os-total">Total: Q 0.00</b></p>
       <div class="modal-actions">
@@ -300,6 +310,9 @@ async function render(container) {
     $('os-pago').addEventListener('change', (e) => {
       $('os-pago-efectivo').style.display = e.target.value === 'efectivo' ? '' : 'none';
       $('os-pago-mixto').style.display = e.target.value === 'mixto' ? '' : 'none';
+      // Mismo criterio que en Ventas: el dinero por transferencia no pasa por la
+      // caja, así que el banco es el único rastro de dónde quedó.
+      $('os-banco-box').style.display = (e.target.value === 'transferencia' || e.target.value === 'mixto') ? '' : 'none';
       updateTotal();
     });
 
@@ -318,6 +331,17 @@ async function render(container) {
         recibido = round2(efectivoMixto + otro);
       }
       if (formaPago === 'efectivo' && recibido < total) { toast('El monto recibido es menor al total.', 'danger'); return; }
+
+      // El dinero por transferencia no pasa por la caja: el banco es su rastro.
+      const bancoOpt = $('os-banco').selectedOptions[0];
+      const pideBanco = formaPago === 'transferencia' || formaPago === 'mixto';
+      if (pideBanco && bancos.length && !bancoOpt.value) {
+        toast('Elige a qué banco te hicieron la transferencia.', 'danger');
+        $('os-banco').focus(); return;
+      }
+      const banco = pideBanco && bancoOpt.value
+        ? { bancoId: bancoOpt.value, bancoNombre: bancoOpt.dataset.nombre }
+        : { bancoId: null, bancoNombre: '' };
       const saveBtn = $('os-save');
       saveBtn.disabled = true;
       try {
@@ -358,6 +382,7 @@ async function render(container) {
           formaPago,
           montoRecibido: (formaPago === 'efectivo' || formaPago === 'mixto') ? recibido : total,
           vuelto,
+          ...banco,
         });
         // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.
         for (const item of productCart.filter((i) => i.productoId)) {

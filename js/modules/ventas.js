@@ -1,6 +1,7 @@
 import { getAll, getById, getByDateRange, addRecord, updateRecord, removeRecord, nextFolio, adjustStockAtomic } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { openUsoPropioForm } from './usoPropio.js';
+import { listarBancos } from './bancos.js';
 import { cuadrePorFecha } from './cuadreCore.js';
 import { abrirCierreDia, abrirDepositoDia } from './cierreDia.js';
 import { addCashMovement } from './cajaCore.js';
@@ -189,7 +190,7 @@ async function render(container, profile) {
           <tbody>${d.ventas.map((s) => `<tr>
             <td>${escapeHtml(s.numero)}</td>
             <td>${escapeHtml(s.clienteNombre || '')}</td>
-            <td><span class="badge badge-info">${escapeHtml(s.formaPago)}</span></td>
+            <td><span class="badge badge-info">${escapeHtml(s.formaPago)}</span>${s.bancoNombre ? `<br><span class="text-muted" style="font-size:11.5px">${escapeHtml(s.bancoNombre)}</span>` : ''}</td>
             <td>${formatQ(s.total)}</td>
             <td>${escapeHtml((s.empleadosComision || []).map((e) => e.empleadoNombre).join(', ')) || '<span class="text-muted">—</span>'}</td>
             <td><button class="btn btn-secondary btn-sm" data-view="${s.id}">Ver detalle</button></td>
@@ -239,7 +240,9 @@ async function render(container, profile) {
     } else if (cierre) {
       abrirCierreDia({ fecha: cierre, dia: porDia.get(cierre), cierre: cierres.get(cierre), onSaved: cargar });
     } else if (deposito) {
-      abrirDepositoDia({ fecha: deposito, dia: porDia.get(deposito), onSaved: cargar });
+      listarBancos().then((bancos) => {
+        abrirDepositoDia({ fecha: deposito, dia: porDia.get(deposito), bancos, onSaved: cargar });
+      });
     }
   });
   await cargar();
@@ -252,7 +255,7 @@ async function render(container, profile) {
         <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}${i.libre ? ' <span class="badge badge-info">suelto</span>' : ''}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
       </table></div>
       <p class="mt-16 text-right">${s.iva > 0 ? `IVA (12%): ${formatQ(s.iva)}<br>` : ''}${s.descuentoTotal > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>Descuento: −${formatQ(s.descuentoTotal)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
-      <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
+      <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)}${s.bancoNombre ? ` — <b>${escapeHtml(s.bancoNombre)}</b>` : ''} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
       <p><b>Empleados:</b> ${(s.empleadosComision || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
       <div class="modal-actions">
         <button class="btn btn-secondary" id="v-editar">Editar</button>
@@ -379,10 +382,11 @@ async function render(container, profile) {
   }
 
   async function openSaleForm() {
-    const [products, customers, users] = await Promise.all([
+    const [products, customers, users, bancos] = await Promise.all([
       getAll('products', { order: 'nombre' }),
       getAll('customers', { order: 'nombre' }),
       getAll('users', { order: 'nombre' }),
+      listarBancos(),
     ]);
     // Aunque no haya productos en el catálogo se puede vender: existen los artículos sueltos.
     const activeProducts = products.filter((p) => p.estado !== 'inactivo');
@@ -453,6 +457,13 @@ async function render(container, profile) {
         <label>Parte en efectivo (Q) <input type="number" id="v-mixto-efectivo" min="0" step="0.01" value="0"></label>
         <label>Parte tarjeta/transferencia (Q) <input type="number" id="v-mixto-otro" min="0" step="0.01" value="0"></label>
       </div>
+      <label id="v-banco-box" style="display:none">¿A qué banco te la hicieron?
+        <select id="v-banco">
+          <option value="">— Elige el banco —</option>
+          ${bancos.map((b) => `<option value="${b.id}" data-nombre="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}
+        </select>
+        ${bancos.length ? '' : '<span class="text-muted" style="font-size:12.5px">No hay bancos registrados. Agrégalos en Almacén → Bancos.</span>'}
+      </label>
 
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" id="cancel-form">Cancelar</button>
@@ -575,6 +586,9 @@ async function render(container, profile) {
     $('v-pago').addEventListener('change', (e) => {
       $('v-pago-efectivo').style.display = e.target.value === 'efectivo' ? '' : 'none';
       $('v-pago-mixto').style.display = e.target.value === 'mixto' ? '' : 'none';
+      // El banco se pregunta cuando entra dinero por transferencia: en pago mixto
+      // también, porque la parte que no es efectivo pudo llegar por ahí.
+      $('v-banco-box').style.display = (e.target.value === 'transferencia' || e.target.value === 'mixto') ? '' : 'none';
       updateTotals();
     });
 
@@ -597,6 +611,18 @@ async function render(container, profile) {
         vuelto = Math.max(0, round2(efectivo + otro - total));
         montoRecibido = round2(efectivo + otro);
       }
+
+      // Si el dinero llegó por transferencia hay que saber a qué cuenta entró:
+      // ese dinero no pasa por la caja, así que el banco es el único rastro.
+      const bancoOpt = $('v-banco').selectedOptions[0];
+      const pideBanco = formaPago === 'transferencia' || formaPago === 'mixto';
+      if (pideBanco && bancos.length && !bancoOpt.value) {
+        toast('Elige a qué banco te hicieron la transferencia.', 'danger');
+        $('v-banco').focus(); return;
+      }
+      const banco = pideBanco && bancoOpt.value
+        ? { bancoId: bancoOpt.value, bancoNombre: bancoOpt.dataset.nombre }
+        : { bancoId: null, bancoNombre: '' };
 
       const saveBtn = $('v-save');
       saveBtn.disabled = true;
@@ -631,6 +657,7 @@ async function render(container, profile) {
           })),
           subtotal, descuentoTotal: descuento,
           iva, total, formaPago, montoRecibido, vuelto, empleadosComision,
+          ...banco,
         });
 
         // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.

@@ -121,7 +121,7 @@ export function abrirCierreDia({ fecha, dia, cierre, onSaved }) {
  * Crea el depósito CON LA FECHA DE ESE DÍA, para que salga de la caja de ese día
  * y no de la de hoy.
  */
-export function abrirDepositoDia({ fecha, dia, onSaved }) {
+export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
   const sugerido = dia?.aDepositar ?? 0;
   const yaDepositado = dia?.depositado ?? 0;
 
@@ -132,7 +132,9 @@ export function abrirDepositoDia({ fecha, dia, onSaved }) {
       ${yaDepositado > 0 ? `<br><span class="text-muted">Ya se habían depositado ${formatQ(yaDepositado)} de este día.</span>` : ''}
     </div>
     <div class="form-row">
-      <label>Banco <input id="dd-banco" autocomplete="off" placeholder="ej. Banrural"></label>
+      <label>Banco ${bancos.length
+        ? `<select id="dd-banco"><option value="">— Elige el banco —</option>${bancos.map((b) => `<option value="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}</select>`
+        : `<input id="dd-banco" autocomplete="off" placeholder="Agrégalos en Almacén → Bancos">`}</label>
       <label>No. de boleta (opcional) <input id="dd-boleta" autocomplete="off"></label>
     </div>
     <label>Monto depositado (Q)
