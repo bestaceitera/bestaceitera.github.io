@@ -8,6 +8,7 @@ import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast } from '../ui.js';
 import { escapeHtml, formatQ, round2, formatDateLong, nowTimeHM, compressImageForFirestore } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
+import { etiquetaBanco } from './bancos.js';
 
 /**
  * Cierra un día: se cuenta el efectivo físico y se guarda si cuadró, faltó o sobró.
@@ -140,7 +141,7 @@ export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
     </div>
     <div class="form-row">
       <label>Banco ${bancos.length
-        ? `<select id="dd-banco"><option value="">— Elige el banco —</option>${bancos.map((b) => `<option value="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}</select>`
+        ? `<select id="dd-banco"><option value="">— Elige la cuenta —</option>${bancos.map((b) => `<option value="${escapeHtml(b.nombre)}" data-cuenta="${escapeHtml(b.numeroCuenta || '')}">${escapeHtml(etiquetaBanco(b))}</option>`).join('')}</select>`
         : `<input id="dd-banco" autocomplete="off" placeholder="Agrégalos en Almacén → Bancos">`}</label>
       <label>No. de boleta (opcional) <input id="dd-boleta" autocomplete="off"></label>
     </div>
@@ -214,7 +215,9 @@ export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
       }
       const user = getCurrentUser();
       const depositId = await addRecord('deposits', {
-        fecha, hora: nowTimeHM(), banco, boleta: $('dd-boleta').value.trim(),
+        fecha, hora: nowTimeHM(), banco,
+        bancoCuenta: $('dd-banco').selectedOptions?.[0]?.dataset.cuenta || '',
+        boleta: $('dd-boleta').value.trim(),
         monto, observaciones: $('dd-obs').value.trim(), fotoBase64,
         usuarioId: user?.uid || null, usuarioNombre: user?.nombre || '',
       });

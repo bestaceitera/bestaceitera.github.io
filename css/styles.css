@@ -389,3 +389,12 @@ button.chip-estado { cursor: pointer; }
 }
 .comprobante-datos { padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
 .comprobante-datos b { font-size: 15px; }
+
+/* Numero de cuenta: en monoespaciado porque se lee digito por digito al
+   compararlo contra la boleta del banco. */
+.num-cuenta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .92em;
+  color: var(--text-muted);
+  letter-spacing: .01em;
+}

@@ -3,7 +3,7 @@ import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, compressImageForFirestore, todayISO, nowTimeHM } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
-import { listarBancos } from './bancos.js';
+import { listarBancos, etiquetaBanco } from './bancos.js';
 
 // El período elegido se guarda fuera de render() para que no se pierda cuando la
 // pantalla se refresca sola al llegar un cambio desde otro dispositivo.
@@ -22,7 +22,8 @@ async function render(container) {
   const table = renderTable({
     columns: [
       { key: 'fecha', label: 'Fecha' },
-      { key: 'banco', label: 'Banco' },
+      { key: 'banco', label: 'Banco', format: (r) => escapeHtml(r.banco || '')
+          + (r.bancoCuenta ? ` <span class="num-cuenta">${escapeHtml(r.bancoCuenta)}</span>` : '') },
       { key: 'boleta', label: 'No. boleta' },
       { key: 'monto', label: 'Monto', format: (r) => formatQ(r.monto) },
       { key: 'usuarioNombre', label: 'Usuario' },
@@ -77,7 +78,7 @@ async function render(container) {
       <form id="dep-form">
         <div class="form-row">
           <label>Banco ${bancos.length
-            ? `<select name="banco" required><option value="">— Elige el banco —</option>${bancos.map((b) => `<option value="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}</select>`
+            ? `<select name="banco" required><option value="">— Elige la cuenta —</option>${bancos.map((b) => `<option value="${escapeHtml(b.nombre)}" data-cuenta="${escapeHtml(b.numeroCuenta || '')}">${escapeHtml(etiquetaBanco(b))}</option>`).join('')}</select>`
             : `<input name="banco" required placeholder="Agrégalos en Almacén → Bancos">`}</label>
           <label>No. de boleta (opcional) <input name="boleta"></label>
         </div>
@@ -145,7 +146,9 @@ async function render(container) {
         saveBtn.textContent = 'Guardando…';
         const user = getCurrentUser();
         const depositId = await addRecord('deposits', {
-          fecha: v.fecha || todayISO(), hora: nowTimeHM(), banco: v.banco.trim(), boleta: v.boleta.trim(),
+          fecha: v.fecha || todayISO(), hora: nowTimeHM(), banco: v.banco.trim(),
+          bancoCuenta: document.querySelector('#dep-form [name="banco"]')?.selectedOptions?.[0]?.dataset.cuenta || '',
+          boleta: v.boleta.trim(),
           monto: Number(v.monto), observaciones: v.observaciones.trim(), fotoBase64,
           usuarioId: user.uid, usuarioNombre: user.nombre,
         });

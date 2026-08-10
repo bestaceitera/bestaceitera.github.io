@@ -278,20 +278,23 @@ async function render(container) {
       // Lo que entró por transferencia, venga de una venta o de una orden.
       const entradas = [
         ...ventas.filter((v) => v.bancoNombre).map((v) => ({
-          fecha: v.fecha, banco: v.bancoNombre, concepto: `Venta ${v.numero}`,
+          fecha: v.fecha, banco: v.bancoNombre, cuenta: v.bancoCuenta || '', concepto: `Venta ${v.numero}`,
           cliente: v.clienteNombre || '', monto: Number(v.total) || 0 })),
         ...ordenes.filter((o) => o.bancoNombre).map((o) => ({
-          fecha: o.fecha, banco: o.bancoNombre, concepto: `Orden ${o.numero}`,
+          fecha: o.fecha, banco: o.bancoNombre, cuenta: o.bancoCuenta || '', concepto: `Orden ${o.numero}`,
           cliente: o.clienteNombre || '', monto: Number(o.total) || 0 })),
       ].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
 
+      // Se agrupa por CUENTA, no solo por banco: dos cuentas del mismo banco son
+      // dinero en lugares distintos y sumarlas juntas escondería eso.
       const porBanco = {};
-      const anota = (banco, campo, monto) => {
-        porBanco[banco] = porBanco[banco] || { banco, recibido: 0, depositado: 0 };
-        porBanco[banco][campo] = round2(porBanco[banco][campo] + monto);
+      const anota = (banco, cuenta, campo, monto) => {
+        const clave = `${banco}|${cuenta || ''}`;
+        porBanco[clave] = porBanco[clave] || { banco, cuenta: cuenta || '', recibido: 0, depositado: 0 };
+        porBanco[clave][campo] = round2(porBanco[clave][campo] + monto);
       };
-      entradas.forEach((e) => anota(e.banco, 'recibido', e.monto));
-      depositos.forEach((d) => anota(d.banco || 'Sin banco', 'depositado', Number(d.monto) || 0));
+      entradas.forEach((e) => anota(e.banco, e.cuenta, 'recibido', e.monto));
+      depositos.forEach((d) => anota(d.banco || 'Sin banco', d.bancoCuenta, 'depositado', Number(d.monto) || 0));
 
       const bancos = Object.values(porBanco)
         .map((b) => ({ ...b, total: round2(b.recibido + b.depositado) }))
@@ -301,12 +304,13 @@ async function render(container) {
       const totalDepositado = round2(depositos.reduce((s, d) => s + (Number(d.monto) || 0), 0));
 
       const rows = entradas.map((e) => ({
-        fecha: e.fecha, banco: e.banco, concepto: e.concepto,
+        fecha: e.fecha, banco: e.banco, cuenta: e.cuenta || '—', concepto: e.concepto,
         cliente: e.cliente, monto: formatQ(e.monto),
       }));
       const cols = [
         { key: 'fecha', label: 'Fecha' },
         { key: 'banco', label: 'Banco' },
+        { key: 'cuenta', label: 'No. de cuenta' },
         { key: 'concepto', label: 'Concepto' },
         { key: 'cliente', label: 'Cliente' },
         { key: 'monto', label: 'Monto' },
@@ -329,9 +333,10 @@ async function render(container) {
         </div>
         ${bancos.length ? `<div class="section-title">Cuánto entró a cada banco</div>
         <div class="card"><div class="table-wrap"><table>
-          <thead><tr><th>Banco</th><th>Por transferencia</th><th>Por depósito</th><th>Total</th></tr></thead>
+          <thead><tr><th>Cuenta</th><th>Por transferencia</th><th>Por depósito</th><th>Total</th></tr></thead>
           <tbody>${bancos.map((b) => `<tr>
-            <td><b>${escapeHtml(b.banco)}</b></td><td>${formatQ(b.recibido)}</td>
+            <td><b>${escapeHtml(b.banco)}</b>${b.cuenta ? `<br><span class="num-cuenta">${escapeHtml(b.cuenta)}</span>` : ''}</td>
+            <td>${formatQ(b.recibido)}</td>
             <td>${formatQ(b.depositado)}</td><td><b>${formatQ(b.total)}</b></td></tr>`).join('')}</tbody>
         </table></div></div>` : ''}
         <div class="section-title">Cobros por transferencia</div>

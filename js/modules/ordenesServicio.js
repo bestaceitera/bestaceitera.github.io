@@ -5,7 +5,7 @@ import { renderTable, openModal, closeModal, toast, productSearch, dateRangePres
 import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
-import { listarBancos } from './bancos.js';
+import { listarBancos, etiquetaBanco } from './bancos.js';
 
 // El período elegido se guarda fuera de render() para que no se pierda cuando la
 // pantalla se refresca sola al llegar un cambio desde otro dispositivo.
@@ -78,7 +78,7 @@ async function render(container) {
         : '<p class="text-muted">Ninguno</p>'}
       ${o.observaciones ? `<p class="mt-16"><b>Observaciones:</b> ${escapeHtml(o.observaciones)}</p>` : ''}
       <p class="mt-16">Servicios: ${formatQ(o.costoServicios ?? 0)} &nbsp; Productos: ${formatQ(o.costoProductos)}${o.costoManoObra ? ` &nbsp; Mano de obra: ${formatQ(o.costoManoObra)}` : ''}</p>
-      <p><b>Forma de pago:</b> ${escapeHtml(o.formaPago || '')}${o.bancoNombre ? ` — <b>${escapeHtml(o.bancoNombre)}</b>` : ''}</p>
+      <p><b>Forma de pago:</b> ${escapeHtml(o.formaPago || '')}${o.bancoNombre ? ` — <b>${escapeHtml(o.bancoNombre)}</b>${o.bancoCuenta ? ` <span class="num-cuenta">${escapeHtml(o.bancoCuenta)}</span>` : ''}` : ''}</p>
       <p class="text-right"><b>Total: ${formatQ(o.total)}</b></p>
     `);
   }
@@ -180,7 +180,7 @@ async function render(container) {
       <label id="os-banco-box" style="display:none">¿A qué banco te la hicieron?
         <select id="os-banco">
           <option value="">— Elige el banco —</option>
-          ${bancos.map((b) => `<option value="${b.id}" data-nombre="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}
+          ${bancos.map((b) => `<option value="${b.id}" data-nombre="${escapeHtml(b.nombre)}" data-cuenta="${escapeHtml(b.numeroCuenta || '')}">${escapeHtml(etiquetaBanco(b))}</option>`).join('')}
         </select>
         ${bancos.length ? '' : '<span class="text-muted" style="font-size:12.5px">No hay bancos registrados. Agrégalos en Almacén → Bancos.</span>'}
       </label>
@@ -340,8 +340,8 @@ async function render(container) {
         $('os-banco').focus(); return;
       }
       const banco = pideBanco && bancoOpt.value
-        ? { bancoId: bancoOpt.value, bancoNombre: bancoOpt.dataset.nombre }
-        : { bancoId: null, bancoNombre: '' };
+        ? { bancoId: bancoOpt.value, bancoNombre: bancoOpt.dataset.nombre, bancoCuenta: bancoOpt.dataset.cuenta || '' }
+        : { bancoId: null, bancoNombre: '', bancoCuenta: '' };
       const saveBtn = $('os-save');
       saveBtn.disabled = true;
       try {

@@ -1,7 +1,7 @@
 import { getAll, getById, getByDateRange, addRecord, updateRecord, removeRecord, nextFolio, adjustStockAtomic } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { openUsoPropioForm } from './usoPropio.js';
-import { listarBancos } from './bancos.js';
+import { listarBancos, etiquetaBanco } from './bancos.js';
 import { cuadrePorFecha } from './cuadreCore.js';
 import { abrirCierreDia, abrirDepositoDia } from './cierreDia.js';
 import { addCashMovement } from './cajaCore.js';
@@ -255,7 +255,7 @@ async function render(container, profile) {
         <tbody>${s.items.map((i) => `<tr><td>${escapeHtml(i.nombre)}${i.libre ? ' <span class="badge badge-info">suelto</span>' : ''}</td><td>${i.cantidad}</td><td>${formatQ(i.precio)}</td><td>${formatQ(i.subtotal)}</td></tr>`).join('')}</tbody>
       </table></div>
       <p class="mt-16 text-right">${s.iva > 0 ? `IVA (12%): ${formatQ(s.iva)}<br>` : ''}${s.descuentoTotal > 0 ? `Subtotal: ${formatQ(s.subtotal)}<br>Descuento: −${formatQ(s.descuentoTotal)}<br>` : ''}<b>Total: ${formatQ(s.total)}</b></p>
-      <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)}${s.bancoNombre ? ` — <b>${escapeHtml(s.bancoNombre)}</b>` : ''} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
+      <p><b>Forma de pago:</b> ${escapeHtml(s.formaPago)}${s.bancoNombre ? ` — <b>${escapeHtml(s.bancoNombre)}</b>${s.bancoCuenta ? ` <span class="num-cuenta">${escapeHtml(s.bancoCuenta)}</span>` : ''}` : ''} ${s.formaPago !== 'transferencia' && s.formaPago !== 'tarjeta' ? `— Recibido ${formatQ(s.montoRecibido)}, Vuelto ${formatQ(s.vuelto)}` : ''}</p>
       <p><b>Empleados:</b> ${(s.empleadosComision || []).map((e) => escapeHtml(e.empleadoNombre)).join(', ') || 'N/A'}</p>
       <div class="modal-actions">
         <button class="btn btn-secondary" id="v-editar">Editar</button>
@@ -460,7 +460,7 @@ async function render(container, profile) {
       <label id="v-banco-box" style="display:none">¿A qué banco te la hicieron?
         <select id="v-banco">
           <option value="">— Elige el banco —</option>
-          ${bancos.map((b) => `<option value="${b.id}" data-nombre="${escapeHtml(b.nombre)}">${escapeHtml(b.nombre)}</option>`).join('')}
+          ${bancos.map((b) => `<option value="${b.id}" data-nombre="${escapeHtml(b.nombre)}" data-cuenta="${escapeHtml(b.numeroCuenta || '')}">${escapeHtml(etiquetaBanco(b))}</option>`).join('')}
         </select>
         ${bancos.length ? '' : '<span class="text-muted" style="font-size:12.5px">No hay bancos registrados. Agrégalos en Almacén → Bancos.</span>'}
       </label>
@@ -620,9 +620,11 @@ async function render(container, profile) {
         toast('Elige a qué banco te hicieron la transferencia.', 'danger');
         $('v-banco').focus(); return;
       }
+      // Se guarda el número de cuenta junto al nombre: si mañana esa cuenta se
+      // edita o se borra del catálogo, la venta sigue diciendo a dónde entró.
       const banco = pideBanco && bancoOpt.value
-        ? { bancoId: bancoOpt.value, bancoNombre: bancoOpt.dataset.nombre }
-        : { bancoId: null, bancoNombre: '' };
+        ? { bancoId: bancoOpt.value, bancoNombre: bancoOpt.dataset.nombre, bancoCuenta: bancoOpt.dataset.cuenta || '' }
+        : { bancoId: null, bancoNombre: '', bancoCuenta: '' };
 
       const saveBtn = $('v-save');
       saveBtn.disabled = true;
