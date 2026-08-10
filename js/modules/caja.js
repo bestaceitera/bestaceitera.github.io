@@ -59,9 +59,15 @@ async function render(container) {
   setActiveTab('control');
 
   // ---------------- Control de efectivo ----------------
+  // Las cuatro pestañas piden datos y después pintan. Entre una cosa y otra el
+  // usuario pudo cambiar de pantalla o de pestaña, y entonces este panel ya salió
+  // del documento: seguir pintando en él revienta sin que nadie lo vea. Por eso
+  // cada una revisa `el.isConnected` al volver del `await`, y busca sus elementos
+  // DENTRO de `el` y no en todo el documento.
   async function renderControl(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const movements = await getTodayMovements();
+    if (!el.isConnected) return;
     const stats = computeExpected(movements);
     const hasFondo = movements.some((m) => m.categoria === 'fondo_inicial');
 
@@ -97,7 +103,7 @@ async function render(container) {
       <div id="mov-today-table"></div>
     `;
 
-    document.getElementById('fondo-form')?.addEventListener('submit', async (e) => {
+    el.querySelector('#fondo-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
       await addCashMovement({ tipo: 'entrada', categoria: 'fondo_inicial', monto: Number(v.monto), motivo: 'Fondo inicial del día' });
@@ -105,10 +111,10 @@ async function render(container) {
       renderControl(el);
     });
 
-    document.getElementById('mov-save')?.addEventListener('click', async () => {
-      const form = document.getElementById('mov-form');
+    el.querySelector('#mov-save')?.addEventListener('click', async () => {
+      const form = el.querySelector('#mov-form');
       const v = formValues(form);
-      const motivo = document.getElementById('mov-motivo').value.trim();
+      const motivo = el.querySelector('#mov-motivo').value.trim();
       if (!v.monto || Number(v.monto) <= 0) { toast('Ingresa un monto válido.', 'danger'); return; }
       if (!motivo) { toast('Ingresa un motivo.', 'danger'); return; }
       await addCashMovement({ tipo: v.tipo, categoria: v.tipo === 'entrada' ? 'otro_ingreso' : 'retiro', monto: Number(v.monto), motivo });
@@ -129,14 +135,15 @@ async function render(container) {
       pageSize: 8,
       emptyMessage: 'Sin movimientos hoy.',
     });
-    document.getElementById('mov-today-table').innerHTML = `<div class="card">${table.html}</div>`;
-    table.mount(document.querySelector('#mov-today-table .card'));
+    el.querySelector('#mov-today-table').innerHTML = `<div class="card">${table.html}</div>`;
+    table.mount(el.querySelector('#mov-today-table .card'));
   }
 
   // ---------------- Cuadre diario ----------------
   async function renderCuadre(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [movements, closings] = await Promise.all([getTodayMovements(), getAll('cashClosings', { order: 'createdAt', direction: 'desc', max: 200 })]);
+    if (!el.isConnected) return;
     const stats = computeExpected(movements);
     const todayClosing = closings.find((c) => c.fecha === todayISO());
 
@@ -188,9 +195,9 @@ async function render(container) {
     `;
 
     // Aviso en vivo: apenas escribe el conteo ya sabe si cuadra, falta o sobra.
-    const inputContado = document.getElementById('contado');
+    const inputContado = el.querySelector('#contado');
     inputContado?.addEventListener('input', () => {
-      const aviso = document.getElementById('cuadre-aviso');
+      const aviso = el.querySelector('#cuadre-aviso');
       if (inputContado.value === '') { aviso.innerHTML = ''; return; }
       const contado = Number(inputContado.value) || 0;
       const dif = round2(contado - stats.esperado);
@@ -209,8 +216,8 @@ async function render(container) {
       }
     });
 
-    document.getElementById('btn-cuadre')?.addEventListener('click', async () => {
-      const contado = Number(document.getElementById('contado').value);
+    el.querySelector('#btn-cuadre')?.addEventListener('click', async () => {
+      const contado = Number(el.querySelector('#contado').value);
       if (isNaN(contado) || contado < 0) { toast('Ingresa el dinero contado.', 'danger'); return; }
       const diferencia = round2(contado - stats.esperado);
       const estado = diferencia === 0 ? 'cuadrada' : diferencia > 0 ? 'sobrante' : 'faltante';
@@ -218,7 +225,7 @@ async function render(container) {
       try {
         await addRecord('cashClosings', {
           fecha: todayISO(), ...stats, contado, diferencia, estado,
-          observaciones: document.getElementById('cuadre-obs').value.trim(),
+          observaciones: el.querySelector('#cuadre-obs').value.trim(),
           usuarioId: user.uid, usuarioNombre: user.nombre,
         });
         toast(estado === 'cuadrada' ? '¡Caja cuadrada!' : estado === 'sobrante' ? `Sobrante de ${formatQ(diferencia)}` : `Faltante de ${formatQ(Math.abs(diferencia))}`,
@@ -242,14 +249,15 @@ async function render(container) {
       pageSize: 10,
       emptyMessage: 'Sin cuadres registrados.',
     });
-    document.getElementById('closings-table').innerHTML = `<div class="card">${table.html}</div>`;
-    table.mount(document.querySelector('#closings-table .card'));
+    el.querySelector('#closings-table').innerHTML = `<div class="card">${table.html}</div>`;
+    table.mount(el.querySelector('#closings-table .card'));
   }
 
   // ---------------- Devoluciones a caja ----------------
   async function renderDevoluciones(el) {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const returns = await getAll('cashReturns', { order: 'createdAt', direction: 'desc', max: 200 });
+    if (!el.isConnected) return;
     const pendientes = returns.filter((r) => r.estado === 'pendiente');
 
     el.innerHTML = `
@@ -277,9 +285,9 @@ async function render(container) {
       <div id="returns-table"></div>
     `;
 
-    document.getElementById('ret-save').addEventListener('click', async () => {
-      const monto = Number(document.getElementById('ret-monto').value);
-      const motivo = document.getElementById('ret-motivo').value.trim();
+    el.querySelector('#ret-save').addEventListener('click', async () => {
+      const monto = Number(el.querySelector('#ret-monto').value);
+      const motivo = el.querySelector('#ret-motivo').value.trim();
       if (!monto || monto <= 0) { toast('Ingresa un monto válido.', 'danger'); return; }
       if (!motivo) { toast('Ingresa un motivo.', 'danger'); return; }
       const user = getCurrentUser();
@@ -308,8 +316,8 @@ async function render(container) {
       pageSize: 10,
       emptyMessage: 'Sin registros.',
     });
-    document.getElementById('returns-table').innerHTML = `<div class="card">${table.html}</div>`;
-    table.mount(document.querySelector('#returns-table .card'));
+    el.querySelector('#returns-table').innerHTML = `<div class="card">${table.html}</div>`;
+    table.mount(el.querySelector('#returns-table .card'));
 
     async function onDevolver(id, list) {
       const item = list.find((r) => r.id === id);
@@ -334,6 +342,7 @@ async function render(container) {
     let rango = applyRangePreset('mes');
     let peticion = 0;
     const primera = await getByDateRange('cashMovements', rango, { max: 1500 });
+    if (!el.isConnected) return;
     let movements = primera.filas;
     const table = renderTable({
       columns: [

@@ -392,7 +392,10 @@ export function abrirDepositosDelDia({ fecha, depositos = [], onSaved }) {
       huboCambios = true;
       toast(`Depósito de ${formatQ(dep.monto)} eliminado.`, 'success', 5000);
       if (!lista.length) { cerrar(); return; }
-      document.getElementById('dl-lista').innerHTML = filas();
+      // Si cerraron el modal con Escape mientras se borraba, ya no hay lista que
+      // repintar; el cambio igual se avisó y la pantalla se recarga al cerrar.
+      const cont = document.getElementById('dl-lista');
+      if (cont) cont.innerHTML = filas();
     } catch (err) {
       toast('No se pudo eliminar el depósito: ' + err.message, 'danger', 6000);
       btn.disabled = false;
