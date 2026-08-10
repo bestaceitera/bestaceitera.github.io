@@ -398,3 +398,26 @@ button.chip-estado { cursor: pointer; }
   color: var(--text-muted);
   letter-spacing: .01em;
 }
+
+/* Reabrir un dia cerrado. El cierre anterior no se borra: se anula y queda
+   guardado, para que un faltante no pueda desaparecer cerrando y reabriendo. */
+.reabrir-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.chip-reabierto {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--warning-light);
+  color: #6b5200;
+  border: 1px solid var(--warning);
+}

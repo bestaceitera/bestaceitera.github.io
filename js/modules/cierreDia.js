@@ -3,7 +3,7 @@
 // El cuadre de Caja solo sirve para HOY. Estos dos formularios trabajan sobre
 // CUALQUIER día, que es lo que hace falta cuando se cargan ventas atrasadas o
 // cuando el depósito se hace al día siguiente.
-import { addRecord } from '../data.js';
+import { addRecord, updateRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast } from '../ui.js';
 import { escapeHtml, formatQ, round2, formatDateLong, nowTimeHM, compressImageForFirestore } from '../utils.js';
@@ -16,7 +16,7 @@ import { etiquetaBanco } from './bancos.js';
  * @param {object} dia      resultado de cuadrarPorDia para ese día
  * @param {object} cierre   cierre ya existente, si el día ya se cerró antes
  */
-export function abrirCierreDia({ fecha, dia, cierre, onSaved }) {
+export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved }) {
   // Se usa `enCaja`, no `esperado`: cuando ese día no se registró fondo inicial,
   // `esperado` lo cuenta como cero y daría un total que no incluye la caja chica
   // que sí está físicamente en el cajón. `enCaja` asume la caja chica y coincide
@@ -33,13 +33,57 @@ export function abrirCierreDia({ fecha, dia, cierre, onSaved }) {
       </div>
       ${cierre.observaciones ? `<p class="text-muted mt-16">${escapeHtml(cierre.observaciones)}</p>` : ''}
       <p class="text-muted" style="font-size:12.5px">Cerrado por ${escapeHtml(cierre.usuarioNombre || '')}.</p>
+
+      <div class="reabrir-box">
+        <b>¿No cuadra algo?</b> Si te diste cuenta de una venta que faltaba registrar,
+        o de un gasto que no anotaste, puedes reabrir el día para volver a cerrarlo.
+        <label class="mt-16">¿Por qué lo reabres?
+          <input id="cd-motivo" autocomplete="off" placeholder="ej. faltaba registrar una venta de Q80">
+        </label>
+        <button type="button" class="btn btn-secondary btn-block" id="cd-reabrir">Reabrir día</button>
+      </div>
+
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancel-form">Cerrar</button></div>
     `);
     document.getElementById('cancel-form').addEventListener('click', closeModal);
+
+    document.getElementById('cd-reabrir').addEventListener('click', async () => {
+      const motivo = document.getElementById('cd-motivo').value.trim();
+      if (!motivo) {
+        toast('Escribe por qué lo reabres, para que quede la razón anotada.', 'danger');
+        document.getElementById('cd-motivo').focus(); return;
+      }
+      const btn = document.getElementById('cd-reabrir');
+      btn.disabled = true;
+      btn.textContent = 'Reabriendo…';
+      try {
+        const user = getCurrentUser();
+        // El cierre NO se borra: se marca como anulado. Si se borrara, un faltante
+        // podría desaparecer cerrando y reabriendo hasta que "cuadre", y nadie se
+        // enteraría. Así queda el rastro de qué decía antes y por qué se reabrió.
+        await updateRecord('cashClosings', cierre.id, {
+          anulado: true,
+          motivoReapertura: motivo,
+          reabiertoPor: user?.nombre || '',
+          reabiertoEn: new Date().toISOString(),
+        });
+        toast('Día reabierto. Corrige lo que falte y vuelve a cerrarlo.', 'success', 6000);
+        closeModal();
+        if (onSaved) onSaved();
+      } catch (err) {
+        toast('No se pudo reabrir el día: ' + err.message, 'danger', 6000);
+        btn.disabled = false;
+        btn.textContent = 'Reabrir día';
+      }
+    });
     return;
   }
 
   openModal(`Cerrar día — ${formatDateLong(fecha)}`, `
+    ${cierresPrevios > 0 ? `<div class="aviso-foto">
+      Este día ya se había cerrado ${cierresPrevios === 1 ? 'una vez' : `${cierresPrevios} veces`} y se reabrió.
+      El cierre anterior queda guardado con su motivo.
+    </div>` : ''}
     <div class="card" style="margin-bottom:14px">
       <table style="width:100%">
         <tr><td>Caja chica</td><td class="text-right">${formatQ(dia?.cajaChica ?? 0)}</td></tr>
@@ -108,6 +152,9 @@ export function abrirCierreDia({ fecha, dia, cierre, onSaved }) {
         gastos: dia?.gastos ?? 0, compras: dia?.compras ?? 0, retiros: dia?.retiros ?? 0,
         depositos: dia?.depositos ?? 0, vueltos: dia?.vueltos ?? 0,
         observaciones: $('cd-obs').value.trim(),
+        // Cuántas veces se había cerrado antes: deja ver de un vistazo si un día
+        // costó cuadrar, sin tener que ir a buscar los cierres anulados.
+        reintentos: cierresPrevios,
         usuarioId: user?.uid || null, usuarioNombre: user?.nombre || '',
       });
       toast(estado === 'cuadrada' ? '¡Día cerrado y cuadrado!'

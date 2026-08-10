@@ -33,6 +33,7 @@ async function render(container, profile) {
   // cerró. Es lo que permite ver de un vistazo qué días están listos y cuáles no.
   let porDia = new Map();
   let cierres = new Map();
+  let anulados = new Map();
   let busqueda = '';
   let pagina = 1;
   let rango = rangoGuardado || applyRangePreset('mes');
@@ -74,13 +75,18 @@ async function render(container, profile) {
       sales = r.filas.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       truncado = r.truncado;
       porDia = cuadrePorFecha(movimientos.filas);
-      cierres = new Map(closings.filas.map((c) => [c.fecha, c]));
+      // Un cierre anulado (día reabierto) no cuenta como cerrado, pero se guarda
+      // para saber cuántas veces costó cuadrar ese día.
+      cierres = new Map(closings.filas.filter((c) => !c.anulado).map((c) => [c.fecha, c]));
+      anulados = new Map();
+      closings.filas.filter((c) => c.anulado).forEach((c) => anulados.set(c.fecha, (anulados.get(c.fecha) || 0) + 1));
     } catch (err) {
       if (mio !== peticion) return;
       sales = [];
       truncado = false;
       porDia = new Map();
       cierres = new Map();
+      anulados = new Map();
       toast('No se pudieron cargar las ventas: ' + err.message, 'danger', 6000);
     } finally {
       if (mio === peticion) { cargando = false; pintar(); }
@@ -129,11 +135,14 @@ async function render(container, profile) {
     const falta = dia.aDepositar;
     const depositado = dia.depositado;
 
+    const reaperturas = anulados.get(fecha) || 0;
     const chipCierre = cierre
       ? `<button class="btn btn-sm chip-estado ok" data-cierre="${fecha}">
            ✓ Día cerrado${cierre.estado !== 'cuadrada' ? ` · ${cierre.estado === 'sobrante' ? 'sobró' : 'faltó'} ${formatQ(Math.abs(cierre.diferencia))}` : ''}
          </button>`
-      : `<button class="btn btn-cerrar-dia btn-sm" data-cierre="${fecha}">Cerrar día</button>`;
+      : `<button class="btn btn-cerrar-dia btn-sm" data-cierre="${fecha}">
+           ${reaperturas > 0 ? 'Volver a cerrar' : 'Cerrar día'}
+         </button>`;
 
     const chipDeposito = falta <= 0.009
       ? (depositado > 0
@@ -145,6 +154,7 @@ async function render(container, profile) {
 
     return `<div class="dia-estado">
       <span class="text-muted">En caja ${formatQ(dia.enCaja)} · caja chica ${formatQ(dia.cajaChica)}</span>
+      ${reaperturas > 0 ? `<span class="chip-reabierto" title="Este día se cerró y se volvió a abrir">↻ reabierto ${reaperturas > 1 ? reaperturas + ' veces' : ''}</span>` : ''}
       <span class="spacer"></span>
       ${chipDeposito}
       ${chipCierre}
@@ -238,7 +248,8 @@ async function render(container, profile) {
       const venta = sales.find((s) => s.id === view);
       if (venta) viewDetail(venta);
     } else if (cierre) {
-      abrirCierreDia({ fecha: cierre, dia: porDia.get(cierre), cierre: cierres.get(cierre), onSaved: cargar });
+      abrirCierreDia({ fecha: cierre, dia: porDia.get(cierre), cierre: cierres.get(cierre),
+        cierresPrevios: anulados.get(cierre) || 0, onSaved: cargar });
     } else if (deposito) {
       listarBancos().then((bancos) => {
         abrirDepositoDia({ fecha: deposito, dia: porDia.get(deposito), bancos, onSaved: cargar });

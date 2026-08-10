@@ -112,7 +112,15 @@ service cloud.firestore {
     // cuánto dinero se contó y cuánto se llevó al banco.
     match /cashClosings/{id} {
       allow read, create: if soloRegistrar();
-      allow update, delete: if isAdmin();
+      // Reabrir un día lo puede hacer el mostrador, porque es quien nota que
+      // faltó registrar algo. Pero SOLO puede marcar la anulación: no puede
+      // tocar lo que se contó ni la diferencia. Así un faltante no se borra
+      // reabriendo y volviendo a cerrar hasta que "cuadre" — el cierre anterior
+      // queda guardado con su motivo, y solo el administrador puede borrarlo.
+      allow update: if isAdmin() || (signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['anulado', 'motivoReapertura', 'reabiertoPor', 'reabiertoEn', 'updatedAt']));
+      allow delete: if isAdmin();
     }
     match /deposits/{id} {
       allow read, create: if soloRegistrar();
