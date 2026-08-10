@@ -430,3 +430,33 @@ button.chip-estado { cursor: pointer; }
   font-weight: 400;
   color: var(--text-muted);
 }
+
+/* Cuanto hay que devolver a la caja chica: son los vueltos que se dieron con su
+   dinero, y hay que reponerlos antes de llevar el resto al banco. */
+.devolver-caja-chica {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--info-light);
+  border: 1px solid var(--info);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius);
+  padding: 11px 14px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: var(--primary-dark);
+}
+.devolver-caja-chica b { font-size: 19px; color: var(--primary-dark); }
+.chip-vueltos {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--info-light);
+  color: var(--primary-dark);
+  border: 1px solid var(--info);
+  white-space: nowrap;
+}

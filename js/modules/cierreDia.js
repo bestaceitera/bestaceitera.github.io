@@ -84,10 +84,10 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
     </div>` : ''}
     <div class="card" style="margin-bottom:14px">
       <table style="width:100%">
-        <tr><td>Ventas en efectivo</td><td class="text-right">${formatQ(dia?.ventas ?? 0)}</td></tr>
-        <tr><td>Servicios en efectivo</td><td class="text-right">${formatQ(dia?.servicios ?? 0)}</td></tr>
+        <tr><td>Recibiste por ventas</td><td class="text-right">${formatQ(dia?.ventas ?? 0)}</td></tr>
+        <tr><td>Recibiste por servicios</td><td class="text-right">${formatQ(dia?.servicios ?? 0)}</td></tr>
         <tr><td>Otros ingresos</td><td class="text-right">${formatQ(dia?.otrosIngresos ?? 0)}</td></tr>
-        <tr><td>Vueltos entregados</td><td class="text-right">− ${formatQ(dia?.vueltos ?? 0)}</td></tr>
+        <tr><td>Vueltos que diste</td><td class="text-right">− ${formatQ(dia?.vueltos ?? 0)}</td></tr>
         <tr><td>Gastos y compras</td><td class="text-right">− ${formatQ(round2((dia?.gastos ?? 0) + (dia?.compras ?? 0)))}</td></tr>
         <tr><td>Retiros</td><td class="text-right">− ${formatQ(dia?.retiros ?? 0)}</td></tr>
         <tr><td>Depósitos ya hechos</td><td class="text-right">− ${formatQ(dia?.depositos ?? 0)}</td></tr>
@@ -99,11 +99,27 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
         es un monto fijo que se queda aparte. Cuenta solo el dinero de las ventas.
       </p>
     </div>
+
+    <!-- Los vueltos salieron de la caja chica, así que hay que reponerlos del
+         dinero recibido antes de llevar el resto al banco. Sin este número hay
+         que sacarlo a mano de la lista de ventas. -->
+    ${(dia?.vueltos ?? 0) > 0 ? `
+      <div class="devolver-caja-chica">
+        <span>Devolver a caja chica <span class="text-muted">— los vueltos que diste</span></span>
+        <b>${formatQ(dia.vueltos)}</b>
+      </div>` : ''}
+
     <!-- Todo el efectivo de las ventas se va al banco: la caja chica no se toca. -->
     <div class="depositar-banco">
       <span>Depositar a banco</span>
       <b>${formatQ(dia?.aDepositar ?? 0)}</b>
     </div>
+
+    ${(dia?.vueltos ?? 0) > 0 ? `
+      <p class="text-muted" style="font-size:12.5px;margin:-4px 0 14px">
+        De los <b>${formatQ(round2((dia?.ventas ?? 0) + (dia?.servicios ?? 0) + (dia?.otrosIngresos ?? 0)))}</b>
+        que recibiste: ${formatQ(dia.vueltos)} vuelven a la caja chica y ${formatQ(dia?.aDepositar ?? 0)} van al banco.
+      </p>` : ''}
     <label>¿Cuánto contaste de las ventas? (Q)
       <input type="number" id="cd-contado" min="0" step="0.01" placeholder="0.00">
     </label>
