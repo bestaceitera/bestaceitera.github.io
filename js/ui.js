@@ -77,6 +77,10 @@ export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emp
   }
 
   function renderBody(container) {
+    // Si mientras se esperaba la respuesta el usuario cambió de pantalla, este
+    // contenedor ya no está en el documento: pintar aquí reventaría (y de todos
+    // modos nadie lo vería). Se abandona en silencio.
+    if (!container.isConnected) return;
     const data = filteredRows();
     const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
     if (state.page > totalPages) state.page = totalPages;

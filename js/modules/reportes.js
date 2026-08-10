@@ -74,15 +74,15 @@ async function render(container) {
     `;
     const cols1 = [{ key: 'nombre', label: 'Producto' }, { key: 'vendidos', label: 'Unidades vendidas' }, { key: 'stock', label: 'Stock actual' }];
     const t1 = renderTable({ columns: cols1, rows: ranked, pageSize: 12, emptyMessage: 'Sin datos.', extraToolbar: exportButtonsHtml() });
-    document.getElementById('rep-inv-table').innerHTML = t1.html;
-    t1.mount(document.getElementById('rep-inv-table'));
-    bindExportButtons(document.getElementById('rep-inv-table'), { title: 'Productos más/menos vendidos', columns: cols1, getRows: () => ranked, filename: 'productos_vendidos' });
+    el.querySelector('#rep-inv-table').innerHTML = t1.html;
+    t1.mount(el.querySelector('#rep-inv-table'));
+    bindExportButtons(el.querySelector('#rep-inv-table'), { title: 'Productos más/menos vendidos', columns: cols1, getRows: () => ranked, filename: 'productos_vendidos' });
 
     const cols2 = [{ key: 'nombre', label: 'Producto' }, { key: 'stock', label: 'Stock' }, { key: 'stockMinimo', label: 'Stock mínimo' }];
     const t2 = renderTable({ columns: cols2, rows: lowStock, pageSize: 12, emptyMessage: 'No hay productos bajo el mínimo.', extraToolbar: exportButtonsHtml() });
-    document.getElementById('rep-inv-low').innerHTML = t2.html;
-    t2.mount(document.getElementById('rep-inv-low'));
-    bindExportButtons(document.getElementById('rep-inv-low'), { title: 'Productos con stock bajo', columns: cols2, getRows: () => lowStock, filename: 'stock_bajo' });
+    el.querySelector('#rep-inv-low').innerHTML = t2.html;
+    t2.mount(el.querySelector('#rep-inv-low'));
+    bindExportButtons(el.querySelector('#rep-inv-low'), { title: 'Productos con stock bajo', columns: cols2, getRows: () => lowStock, filename: 'stock_bajo' });
   }
 
   // ---------------- Ventas ----------------
@@ -103,8 +103,8 @@ async function render(container) {
         <div class="card mt-16"><div id="rep-ventas-table"></div></div>
       `;
       const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Sin ventas en el período.' });
-      document.getElementById('rep-ventas-table').innerHTML = t.html;
-      t.mount(document.getElementById('rep-ventas-table'));
+      el.querySelector('#rep-ventas-table').innerHTML = t.html;
+      t.mount(el.querySelector('#rep-ventas-table'));
       bindExportButtons(el, { title: 'Reporte de ventas', columns: cols, getRows: () => rows, filename: 'reporte_ventas' });
       bindRangeControls(el, (r) => { range = r; draw(); });
     }
@@ -125,8 +125,8 @@ async function render(container) {
     const cols = [{ key: 'nombre', label: 'Servicio' }, { key: 'veces', label: 'Veces realizado' }, { key: 'total', label: 'Ingresos generados' }];
     el.innerHTML = `<div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-serv-table"></div></div>`;
     const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Sin órdenes de servicio registradas.' });
-    document.getElementById('rep-serv-table').innerHTML = t.html;
-    t.mount(document.getElementById('rep-serv-table'));
+    el.querySelector('#rep-serv-table').innerHTML = t.html;
+    t.mount(el.querySelector('#rep-serv-table'));
     bindExportButtons(el, { title: 'Servicios más realizados', columns: cols, getRows: () => rows, filename: 'reporte_servicios' });
   }
 
@@ -151,10 +151,10 @@ async function render(container) {
         <div class="card mt-16"><div id="rep-compras-table"></div></div>
       `;
       const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Sin compras registradas.' });
-      document.getElementById('rep-compras-table').innerHTML = t.html;
-      t.mount(document.getElementById('rep-compras-table'));
+      el.querySelector('#rep-compras-table').innerHTML = t.html;
+      t.mount(el.querySelector('#rep-compras-table'));
       bindExportButtons(el, { title: 'Reporte de compras', columns: cols, getRows: () => rows, filename: 'reporte_compras' });
-      document.getElementById('rep-compras-prov').addEventListener('change', (e) => { proveedorFiltro = e.target.value; draw(); });
+      el.querySelector('#rep-compras-prov').addEventListener('change', (e) => { proveedorFiltro = e.target.value; draw(); });
     }
     draw();
   }
@@ -173,8 +173,8 @@ async function render(container) {
     const cols = [{ key: 'nombre', label: 'Cliente' }, { key: 'compras', label: 'No. compras facturadas' }, { key: 'total', label: 'Total facturado' }];
     el.innerHTML = `<div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-cli-table"></div></div>`;
     const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Aún no hay ventas facturadas a clientes registrados.' });
-    document.getElementById('rep-cli-table').innerHTML = t.html;
-    t.mount(document.getElementById('rep-cli-table'));
+    el.querySelector('#rep-cli-table').innerHTML = t.html;
+    t.mount(el.querySelector('#rep-cli-table'));
     bindExportButtons(el, { title: 'Clientes facturados / frecuentes', columns: cols, getRows: () => rows, filename: 'reporte_clientes' });
   }
 
@@ -345,7 +345,7 @@ async function render(container) {
 
       const t = renderTable({ columns: cols, rows, pageSize: 15,
         emptyMessage: 'No hubo cobros por transferencia en estas fechas.' });
-      const cont = document.getElementById('rep-bancos-table');
+      const cont = el.querySelector('#rep-bancos-table');
       cont.innerHTML = t.html;
       t.mount(cont);
       bindExportButtons(el, { title: 'Cobros por transferencia', columns: cols, getRows: () => rows, filename: 'bancos' });
@@ -429,7 +429,7 @@ async function render(container) {
 
       const t = renderTable({ columns: cols, rows, pageSize: 15,
         emptyMessage: 'No hubo salidas por uso propio en estas fechas.' });
-      const cont = document.getElementById('rep-uso-table');
+      const cont = el.querySelector('#rep-uso-table');
       cont.innerHTML = t.html;
       t.mount(cont);
       bindExportButtons(el, { title: 'Productos para uso propio', columns: cols, getRows: () => rows, filename: 'uso_propio' });
@@ -500,13 +500,13 @@ async function render(container) {
       `;
 
       const t1 = renderTable({ columns: cols, rows, pageSize: 15, emptyMessage: 'No hubo movimiento de caja en estas fechas.' });
-      const cont = document.getElementById('rep-caja-dias');
+      const cont = el.querySelector('#rep-caja-dias');
       cont.innerHTML = t1.html;
       t1.mount(cont);
       bindExportButtons(el, { title: 'Cuadre diario de caja', columns: cols, getRows: () => rows, filename: 'cuadre_diario' });
 
       const t2 = renderTable({ columns: depositCols, rows: depositRows, pageSize: 10, emptyMessage: 'Sin depósitos registrados en estas fechas.' });
-      const dep = document.getElementById('rep-caja-deposits');
+      const dep = el.querySelector('#rep-caja-deposits');
       dep.innerHTML = t2.html;
       t2.mount(dep);
       bindExportButtons(dep.closest('.card'), { title: 'Depósitos bancarios', columns: depositCols, getRows: () => depositRows, filename: 'depositos_bancarios' });
@@ -626,7 +626,7 @@ async function render(container) {
             El detalle completo está en la pestaña <b>Uso propio</b>.</p>` : ''}
       `;
       const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Nadie tiene ventas en el período.' });
-      const tableContainer = document.getElementById('rep-comisiones-table');
+      const tableContainer = el.querySelector('#rep-comisiones-table');
       tableContainer.innerHTML = t.html;
       t.mount(tableContainer);
       bindExportButtons(el, {

@@ -77,6 +77,9 @@ async function render(container) {
   const botonesFiltro = container.querySelectorAll('#inv-filtros [data-mov]');
   function aplicarFiltro(tipo) {
     tipoActivo = tipo;
+    // Si el usuario cambió de pantalla mientras llegaban los movimientos, esta
+    // pantalla ya no está en el documento y no hay dónde pintar.
+    if (!container.isConnected) return;
     botonesFiltro.forEach((b) => {
       const activo = b.dataset.mov === tipo;
       b.classList.toggle('btn-primary', activo);

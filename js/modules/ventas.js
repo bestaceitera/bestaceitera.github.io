@@ -162,6 +162,9 @@ async function render(container, profile) {
   }
 
   function pintar() {
+    // Si el usuario cambió de pantalla mientras llegaban las ventas, esta tarjeta
+    // ya salió del documento: pintar aquí reventaría sin que nadie lo viera.
+    if (!card.isConnected) return;
     if (cargando) {
       card.querySelector('#v-resumen').innerHTML = '';
       card.querySelector('#v-dias').innerHTML = '<div class="empty-state">Cargando…</div>';
