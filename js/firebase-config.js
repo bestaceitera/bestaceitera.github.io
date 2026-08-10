@@ -16,7 +16,8 @@ const firebaseConfig = {
   appId: "1:240475425530:web:676ce92705d72ac41ad743",
 };
 
-export const SDK_VERSION = '10.12.2';
+// Versión del SDK de Firebase. Se usa solo aquí, para construir las tres URLs.
+const SDK_VERSION = '10.12.2';
 
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-app.js`);
 const authMod = await import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-auth.js`);
@@ -53,8 +54,3 @@ export const authApi = authMod;
 export const fsApi = fsMod;
 
 export const isConfigured = firebaseConfig.apiKey !== 'PEGA_AQUI_TU_API_KEY';
-
-// Usados por usuarios.js para crear cuentas nuevas en una app secundaria
-// (así no se cierra la sesión del administrador que está creándolas).
-export const config = firebaseConfig;
-export const initializeApp_ = initializeApp;
