@@ -79,9 +79,13 @@ export async function openSaleForm({ onSaved } = {}) {
         <option value="mixto">Mixto</option>
       </select>
     </label>
-    <div id="v-pago-efectivo" class="form-row">
-      <label>Monto recibido (Q) <input type="number" id="v-recibido" min="0" step="0.01"></label>
-      <label>Vuelto <input type="text" id="v-vuelto" value="Q 0.00" disabled></label>
+    <div id="v-pago-efectivo">
+      <div class="pago-pregunta">¿Con cuánto te pagó?</div>
+      <div class="billetes" id="v-billetes"></div>
+      <label id="v-otro-box" style="display:none">Monto recibido (Q)
+        <input type="number" id="v-recibido" min="0" step="0.01" placeholder="0.00">
+      </label>
+      <div class="vuelto-box" id="v-vuelto-box" hidden></div>
     </div>
     <div id="v-pago-mixto" class="form-row" style="display:none">
       <label>Parte en efectivo (Q) <input type="number" id="v-mixto-efectivo" min="0" step="0.01" value="0"></label>
@@ -198,15 +202,80 @@ export async function openSaleForm({ onSaved } = {}) {
     return { subtotal, descuento, iva: 0, total: round2(subtotal - descuento) };
   }
 
+  // ---- Cobro en efectivo --------------------------------------------------
+  // El vuelto no se escribe: se toca con cuánto pagó el cliente y el sistema lo
+  // saca. Por defecto asume pago justo, así que la venta normal no pide teclear
+  // nada. `modoPago` recuerda qué eligió el cajero para que el número siga vivo
+  // aunque cambie el total (por un descuento o un producto más).
+  let modoPago = 'justo';   // 'justo' | 'billete' | 'otro'
+  let montoBillete = 0;
+
+  /**
+   * Con cuánto puede pagar el cliente una venta de `total`.
+   *
+   * En Guatemala el billete más grande es de Q200, y la gente paga redondeando
+   * hacia arriba: una venta de Q235 se cubre con Q240, Q250 o Q300, no con una
+   * cifra cualquiera. Por eso se ofrecen los redondeos al 10, 20, 50, 100 y 200
+   * en vez de una lista fija de billetes que casi nunca calzaría.
+   */
+  function sugerenciasDePago(total) {
+    if (total <= 0) return [];
+    const montos = new Set();
+    for (const paso of [10, 20, 50, 100, 200]) {
+      const monto = Math.ceil(total / paso) * paso;
+      if (monto > total) montos.add(monto);
+    }
+    return [...montos].sort((a, b) => a - b).slice(0, 4);
+  }
+
+  function recibidoEnEfectivo(total) {
+    if (modoPago === 'justo') return total;
+    if (modoPago === 'otro') return Number($('v-recibido').value) || 0;
+    return montoBillete;
+  }
+
+  function renderBilletes(total) {
+    // Si el total subió por encima del billete elegido, ese billete ya no
+    // alcanza: se regresa solo a pago justo en vez de dejar una venta que no
+    // se puede guardar.
+    if (modoPago === 'billete' && montoBillete < total) modoPago = 'justo';
+    const cont = $('v-billetes');
+    cont.innerHTML = `
+      <button type="button" class="billete ${modoPago === 'justo' ? 'activo' : ''}" data-justo>
+        Pago justo${total > 0 ? `<span>${formatQ(total)}</span>` : ''}
+      </button>
+      ${sugerenciasDePago(total).map((m) => `
+        <button type="button" class="billete ${modoPago === 'billete' && montoBillete === m ? 'activo' : ''}" data-monto="${m}">
+          ${formatQ(m)}
+        </button>`).join('')}
+      <button type="button" class="billete ${modoPago === 'otro' ? 'activo' : ''}" data-otro>Otro</button>`;
+
+    cont.querySelector('[data-justo]').addEventListener('click', () => { modoPago = 'justo'; updateTotals(); });
+    cont.querySelector('[data-otro]').addEventListener('click', () => {
+      modoPago = 'otro'; updateTotals(); $('v-recibido').focus();
+    });
+    cont.querySelectorAll('[data-monto]').forEach((b) => b.addEventListener('click', () => {
+      modoPago = 'billete'; montoBillete = Number(b.dataset.monto); updateTotals();
+    }));
+    $('v-otro-box').style.display = modoPago === 'otro' ? '' : 'none';
+  }
+
   function updateTotals() {
     const { subtotal, descuento, total } = computeTotals();
     $('v-totales').innerHTML = descuento
       ? `<span class="text-muted">Subtotal ${formatQ(subtotal)} − ${formatQ(descuento)}</span><br><b>Total: ${formatQ(total)}</b>`
       : `<b>Total: ${formatQ(total)}</b>`;
     if ($('v-pago').value === 'efectivo') {
-      const recibido = Number($('v-recibido').value) || 0;
-      // Sin nada que cobrar no hay vuelto que entregar.
-      $('v-vuelto').value = formatQ(total > 0 ? Math.max(0, round2(recibido - total)) : 0);
+      renderBilletes(total);
+      const recibido = recibidoEnEfectivo(total);
+      const falta = round2(total - recibido);
+      const box = $('v-vuelto-box');
+      // Solo aparece cuando hay algo que decir: en el pago justo estorba.
+      box.hidden = !(total > 0 && (falta > 0 || recibido > total));
+      box.className = falta > 0 ? 'vuelto-box falta' : 'vuelto-box';
+      box.innerHTML = falta > 0
+        ? `Faltan <b>${formatQ(falta)}</b> para cubrir la venta`
+        : `Dale de vuelto <b>${formatQ(round2(recibido - total))}</b>`;
     }
     return computeTotals();
   }
@@ -231,7 +300,7 @@ export async function openSaleForm({ onSaved } = {}) {
     let montoRecibido = total, vuelto = 0;
 
     if (formaPago === 'efectivo') {
-      montoRecibido = Number($('v-recibido').value) || 0;
+      montoRecibido = recibidoEnEfectivo(total);
       if (montoRecibido < total) { toast('El monto recibido es menor al total.', 'danger'); return; }
       vuelto = Math.max(0, round2(montoRecibido - total));
     } else if (formaPago === 'mixto') {

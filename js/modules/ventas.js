@@ -159,8 +159,8 @@ async function render(container, profile) {
     return `<div class="dia-estado">
       <span class="text-muted" title="Solo el dinero de las ventas en efectivo. Las transferencias y la caja chica no entran aquí.">
         Efectivo de las ventas ${formatQ(dia.efectivoVentas)}</span>
-      ${dia.vueltos > 0 ? `<span class="chip-vueltos" title="Los vueltos salieron de la caja chica: hay que reponerlos del dinero recibido">
-        ↩ devolver a caja chica ${formatQ(dia.vueltos)}</span>` : ''}
+      ${dia.reponerCajaChica > 0 ? `<span class="chip-vueltos" title="Vueltos, gastos y compras pagados en efectivo salieron de la caja chica: hay que reponerlos del dinero que entró">
+        ↩ devolver a caja chica ${formatQ(dia.reponerCajaChica)}</span>` : ''}
       ${reaperturas > 0 ? `<span class="chip-reabierto" title="Este día se cerró y se volvió a abrir">↻ reabierto ${reaperturas > 1 ? reaperturas + ' veces' : ''}</span>` : ''}
       <span class="spacer"></span>
       ${chipDeposito}

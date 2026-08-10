@@ -460,3 +460,29 @@ button.chip-estado { cursor: pointer; }
   border: 1px solid var(--info);
   white-space: nowrap;
 }
+
+/* Cobro en efectivo: se toca con cuánto pagó el cliente en vez de teclearlo.
+   El botón es grande a propósito — se usa con el cliente enfrente, apurado. */
+.pago-pregunta { font-size: 13px; font-weight: 600; color: var(--text-muted); margin: 14px 0 7px; }
+.billetes { display: flex; flex-wrap: wrap; gap: 8px; }
+.billete {
+  flex: 1 1 auto; min-width: 88px; padding: 10px 12px;
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+  font-size: 15px; font-weight: 700; cursor: pointer; line-height: 1.25;
+  transition: background .12s, border-color .12s;
+}
+.billete span { display: block; font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+.billete:hover { border-color: var(--primary); background: var(--primary-light); }
+.billete.activo { border-color: var(--primary); background: var(--primary); color: #fff; }
+.billete.activo span { color: rgba(255,255,255,.8); }
+.vuelto-box {
+  margin-top: 12px; padding: 12px 14px; border-radius: var(--radius);
+  background: var(--success-light); border: 1px solid var(--success);
+  border-left: 4px solid var(--success); color: #14622f; font-size: 14px;
+}
+.vuelto-box b { font-size: 23px; display: block; margin-top: 2px; }
+.vuelto-box.falta {
+  background: var(--danger-light); border-color: var(--danger);
+  border-left-color: var(--danger); color: #8c1219;
+}
