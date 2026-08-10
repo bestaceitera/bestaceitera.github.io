@@ -47,10 +47,15 @@ export function computeExpected(movements) {
 /**
  * Arma el cuadre de cada día a partir de una lista de movimientos de varios días.
  *
- *   efectivo en caja = caja chica + entradas − salidas
- *   a depositar      = efectivo en caja − caja chica
+ *   efectivo de ventas = entradas − salidas
+ *   a depositar        = ese mismo efectivo de ventas
  *
- * La caja chica no se deposita nunca: se queda en el negocio para dar vueltos.
+ * LA CAJA CHICA NO SE CUENTA. En este negocio es un monto fijo que vive aparte
+ * del dinero del día: no se deposita y no se cuenta al cerrar. Al cierre se
+ * cuenta SOLO lo que entró por ventas, y todo eso se va al banco. Antes se
+ * sumaba al total esperado, y como aquí la caja chica vale Q105 —lo mismo que
+ * una transferencia de ese día— los números se confundían entre sí.
+ *
  * Los depósitos ya hechos cuentan como salida, así que "a depositar" siempre
  * muestra lo que TODAVÍA falta llevar al banco, no lo del día entero.
  */
@@ -67,11 +72,14 @@ export function cuadrarPorDia(movimientos, { cajaChicaPorDefecto = CAJA_CHICA_PO
       const stats = computeExpected(movs);
       const tuvoFondo = stats.fondoInicial > 0;
       const cajaChica = tuvoFondo ? round2(stats.fondoInicial) : cajaChicaPorDefecto;
-      const enCaja = round2(cajaChica + stats.totalEntradas - stats.totalSalidas);
+      // Solo el dinero de las ventas del día: es lo que se cuenta al cerrar y lo
+      // que se lleva al banco. La caja chica queda fuera de esta cuenta.
+      const efectivoVentas = round2(stats.totalEntradas - stats.totalSalidas);
       return {
-        fecha, ...stats, tuvoFondo, cajaChica, enCaja,
+        fecha, ...stats, tuvoFondo, cajaChica,
+        efectivoVentas,
         depositado: stats.depositos,
-        aDepositar: round2(Math.max(0, enCaja - cajaChica)),
+        aDepositar: round2(Math.max(0, efectivoVentas)),
       };
     })
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));

@@ -99,10 +99,16 @@ async function render(container, profile) {
       if (!porDia.has(dia)) porDia.set(dia, []);
       porDia.get(dia).push(s);
     });
+    // Se separa lo cobrado en efectivo de lo que entró por transferencia o
+    // tarjeta. Sin eso, el total del día se lee como si todo estuviera en el
+    // cajón, y no cuadra con lo que hay que depositar.
+    const esEfectivo = (v) => v.formaPago !== 'transferencia' && v.formaPago !== 'tarjeta';
     return [...porDia.entries()]
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([fecha, ventas]) => ({
         fecha,
+        efectivo: round2(ventas.filter(esEfectivo).reduce((s, v) => s + Number(v.total || 0), 0)),
+        noEfectivo: round2(ventas.filter((v) => !esEfectivo(v)).reduce((s, v) => s + Number(v.total || 0), 0)),
         ventas,
         total: round2(ventas.reduce((s, v) => s + Number(v.total || 0), 0)),
       }));
@@ -151,7 +157,8 @@ async function render(container, profile) {
          </button>`;
 
     return `<div class="dia-estado">
-      <span class="text-muted">En caja ${formatQ(dia.enCaja)} · caja chica ${formatQ(dia.cajaChica)}</span>
+      <span class="text-muted" title="Solo el dinero de las ventas en efectivo. Las transferencias y la caja chica no entran aquí.">
+        Efectivo de las ventas ${formatQ(dia.efectivoVentas)}</span>
       ${reaperturas > 0 ? `<span class="chip-reabierto" title="Este día se cerró y se volvió a abrir">↻ reabierto ${reaperturas > 1 ? reaperturas + ' veces' : ''}</span>` : ''}
       <span class="spacer"></span>
       ${chipDeposito}
@@ -193,7 +200,10 @@ async function render(container, profile) {
       <div class="dia-grupo">
         <div class="dia-header">
           <span class="dia-fecha">${escapeHtml(formatDateLong(d.fecha))}</span>
-          <span class="dia-resumen">${d.ventas.length} venta${d.ventas.length === 1 ? '' : 's'} · <b>${formatQ(d.total)}</b></span>
+          <span class="dia-resumen">${d.ventas.length} venta${d.ventas.length === 1 ? '' : 's'} · <b>${formatQ(d.total)}</b>${
+            d.noEfectivo > 0
+              ? `<br><span class="dia-desglose">${formatQ(d.efectivo)} en efectivo + ${formatQ(d.noEfectivo)} a banco</span>`
+              : ''}</span>
         </div>
         ${estadoDelDia(d.fecha)}
         <div class="table-wrap"><table>

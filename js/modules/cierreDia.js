@@ -17,11 +17,9 @@ import { etiquetaBanco } from './bancos.js';
  * @param {object} cierre   cierre ya existente, si el día ya se cerró antes
  */
 export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved }) {
-  // Se usa `enCaja`, no `esperado`: cuando ese día no se registró fondo inicial,
-  // `esperado` lo cuenta como cero y daría un total que no incluye la caja chica
-  // que sí está físicamente en el cajón. `enCaja` asume la caja chica y coincide
-  // con el desglose de abajo y con el reporte de cuadre diario.
-  const esperado = dia?.enCaja ?? 0;
+  // Al cerrar se cuenta SOLO el dinero de las ventas del día. La caja chica es un
+  // monto fijo que vive aparte, no se deposita y no se cuenta aquí.
+  const esperado = dia?.efectivoVentas ?? 0;
 
   if (cierre) {
     openModal(`Día cerrado — ${formatDateLong(fecha)}`, `
@@ -86,26 +84,27 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
     </div>` : ''}
     <div class="card" style="margin-bottom:14px">
       <table style="width:100%">
-        <tr><td>Caja chica</td><td class="text-right">${formatQ(dia?.cajaChica ?? 0)}</td></tr>
         <tr><td>Ventas en efectivo</td><td class="text-right">${formatQ(dia?.ventas ?? 0)}</td></tr>
         <tr><td>Servicios en efectivo</td><td class="text-right">${formatQ(dia?.servicios ?? 0)}</td></tr>
         <tr><td>Otros ingresos</td><td class="text-right">${formatQ(dia?.otrosIngresos ?? 0)}</td></tr>
+        <tr><td>Vueltos entregados</td><td class="text-right">− ${formatQ(dia?.vueltos ?? 0)}</td></tr>
         <tr><td>Gastos y compras</td><td class="text-right">− ${formatQ(round2((dia?.gastos ?? 0) + (dia?.compras ?? 0)))}</td></tr>
         <tr><td>Retiros</td><td class="text-right">− ${formatQ(dia?.retiros ?? 0)}</td></tr>
         <tr><td>Depósitos ya hechos</td><td class="text-right">− ${formatQ(dia?.depositos ?? 0)}</td></tr>
-        <tr><td>Vueltos entregados</td><td class="text-right">− ${formatQ(dia?.vueltos ?? 0)}</td></tr>
         <tr style="font-weight:700;border-top:1px solid var(--border)">
-          <td>Debería haber en caja</td><td class="text-right">${formatQ(esperado)}</td></tr>
-        <tr><td>Caja chica que se queda</td><td class="text-right">− ${formatQ(dia?.cajaChica ?? 0)}</td></tr>
+          <td>Efectivo de las ventas del día</td><td class="text-right">${formatQ(esperado)}</td></tr>
       </table>
+      <p class="text-muted" style="font-size:12.5px;margin:10px 0 0">
+        La caja chica de ${formatQ(dia?.cajaChica ?? 0)} <b>no entra en esta cuenta</b>:
+        es un monto fijo que se queda aparte. Cuenta solo el dinero de las ventas.
+      </p>
     </div>
-    <!-- El número por el que se abre este cuadro: cuánto hay que llevar al banco.
-         La caja chica no se deposita, se queda para dar vueltos. -->
+    <!-- Todo el efectivo de las ventas se va al banco: la caja chica no se toca. -->
     <div class="depositar-banco">
       <span>Depositar a banco</span>
       <b>${formatQ(dia?.aDepositar ?? 0)}</b>
     </div>
-    <label>¿Cuánto contaste físicamente? (Q)
+    <label>¿Cuánto contaste de las ventas? (Q)
       <input type="number" id="cd-contado" min="0" step="0.01" placeholder="0.00">
     </label>
     <div id="cd-aviso"></div>

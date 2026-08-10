@@ -421,3 +421,12 @@ button.chip-estado { cursor: pointer; }
   color: #6b5200;
   border: 1px solid var(--warning);
 }
+
+/* Desglose efectivo / banco en el encabezado del dia. Sin el, el total del dia
+   se lee como si todo estuviera en el cajon y no cuadra con lo que hay que
+   depositar: una transferencia nunca pasa por la caja. */
+.dia-desglose {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-muted);
+}

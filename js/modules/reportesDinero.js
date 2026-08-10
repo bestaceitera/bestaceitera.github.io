@@ -9,7 +9,7 @@ import { getByDateRange } from '../data.js';
 import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
-import { cuadrarPorDia, CAJA_CHICA_POR_DEFECTO } from './cuadreCore.js';
+import { cuadrarPorDia } from './cuadreCore.js';
 
 /** Trae solo los registros del período pedido. Se apoya en la consulta por rango
  *  de data.js para no repetir aquí la misma construcción de filtros. */
@@ -292,28 +292,22 @@ async function renderCaja(el) {
     const rows = dias.map((d) => ({
       fecha: d.fecha,
       dia: formatDateLong(d.fecha),
-      cajaChica: formatQ(d.cajaChica) + (d.tuvoFondo ? '' : ' *'),
       entradas: formatQ(d.totalEntradas),
       salidas: formatQ(round2(d.totalSalidas - d.depositado)),
       depositado: formatQ(d.depositado),
-      enCaja: formatQ(d.enCaja),
       aDepositar: formatQ(d.aDepositar),
     }));
     const cols = [
       { key: 'dia', label: 'Día' },
-      { key: 'cajaChica', label: 'Caja chica' },
       { key: 'entradas', label: 'Entró en efectivo' },
       { key: 'salidas', label: 'Salidas' },
       { key: 'depositado', label: 'Ya depositado' },
-      { key: 'enCaja', label: 'Efectivo en caja' },
       // Es el número por el que se abre este reporte: va resaltado.
       { key: 'aDepositar', label: 'A depositar', format: (r) => `<b style="color:var(--primary)">${escapeHtml(r.aDepositar)}</b>` },
     ];
 
     const depositRows = deposits.map((d) => ({ fecha: d.fecha, banco: d.banco, boleta: d.boleta, monto: formatQ(d.monto), usuario: d.usuarioNombre }));
     const depositCols = [{ key: 'fecha', label: 'Fecha' }, { key: 'banco', label: 'Banco' }, { key: 'boleta', label: 'Boleta' }, { key: 'monto', label: 'Monto' }, { key: 'usuario', label: 'Usuario' }];
-
-    const hayAsumidos = dias.some((d) => !d.tuvoFondo);
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}<div class="spacer"></div>${exportButtonsHtml()}</div>
@@ -328,7 +322,6 @@ async function renderCaja(el) {
         <span>${dias.length} día${dias.length === 1 ? '' : 's'} con movimiento</span>
       </div>
       <div class="card mt-16"><div id="rep-caja-dias"></div></div>
-      ${hayAsumidos ? `<p class="text-muted">* Ese día no se registró fondo inicial, así que se tomó la caja chica de ${formatQ(CAJA_CHICA_POR_DEFECTO)}.</p>` : ''}
       <div class="section-title">Depósitos bancarios realizados</div>
       <div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-caja-deposits"></div></div>
     `;
