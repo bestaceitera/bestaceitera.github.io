@@ -4,18 +4,12 @@ import { getByDateRange } from '../data.js';
 import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
+import { repartirEntre } from './comisionCore.js';
 
 /** Trae solo los registros del período pedido. */
 async function porRango(coleccion, rango, { max = 5000 } = {}) {
   const { filas } = await getByDateRange(coleccion, rango, { max });
   return filas;
-}
-
-function repartir(total, n) {
-  const base = Math.floor((total * 100) / n) / 100;
-  const partes = new Array(n).fill(base);
-  partes[0] = round2(partes[0] + round2(total - base * n));
-  return partes;
 }
 
 async function renderComisiones(el) {
@@ -48,7 +42,7 @@ async function renderComisiones(el) {
     ventasPeriodo.forEach((s) => {
       const emps = s.empleadosComision || [];
       if (!emps.length) return;
-      const partes = repartir(s.total, emps.length);
+      const partes = repartirEntre(s.total, emps.length);
       emps.forEach((e, i) => acumular(e.empleadoNombre, 'ventas',
         { numero: s.numero, fecha: s.fecha, total: s.total, parte: partes[i], compartida: emps.length },
         partes[i], Number(e.comisionPct) || 0));
@@ -56,7 +50,7 @@ async function renderComisiones(el) {
     ordenesPeriodo.forEach((o) => {
       const emps = o.empleados || [];
       if (!emps.length) return;
-      const partes = repartir(o.total, emps.length);
+      const partes = repartirEntre(o.total, emps.length);
       emps.forEach((e, i) => acumular(e.empleadoNombre, 'servicios',
         { numero: o.numero, fecha: o.fecha, total: o.total, parte: partes[i], compartida: emps.length },
         partes[i], Number(e.comisionPct) || 0));

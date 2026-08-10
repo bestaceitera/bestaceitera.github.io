@@ -4,6 +4,7 @@ import { formatQ, round2 } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
 import { renderComisiones } from './reporteComisiones.js';
+import { renderDiario } from './reporteDiario.js';
 
 /**
  * Trae de la base SOLO los registros del período pedido, en vez de descargar la
@@ -26,6 +27,7 @@ async function render(container) {
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="compras">Compras</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="clientes">Clientes</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="caja">Caja</button>
+      <button class="btn btn-secondary btn-sm tab-btn" data-tab="diario">Detalle diario</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="comisiones">Comisiones</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="usopropio">Uso propio</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="bancos">Bancos</button>
@@ -35,7 +37,7 @@ async function render(container) {
   `;
   const tabButtons = container.querySelectorAll('.tab-btn');
   const content = container.querySelector('#rep-content');
-  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, comisiones: renderComisiones, usopropio: renderUsoPropio, bancos: renderBancos, comprobantes: renderComprobantes };
+  const renderers = { inventario: renderInventario, ventas: renderVentas, servicios: renderServicios, compras: renderCompras, clientes: renderClientes, caja: renderCaja, diario: renderDiario, comisiones: renderComisiones, usopropio: renderUsoPropio, bancos: renderBancos, comprobantes: renderComprobantes };
 
   function setActiveTab(tab) {
     tabButtons.forEach((b) => {

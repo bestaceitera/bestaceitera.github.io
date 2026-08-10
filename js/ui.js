@@ -67,7 +67,11 @@ export function confirmDialog(message) {
  * rows: array de objetos
  * Devuelve { html, mount } — mount(container) engancha búsqueda/paginación.
  */
-export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emptyMessage = 'Sin registros', extraToolbar = '' }) {
+/**
+ * `rowClass(fila)` permite marcar filas especiales — por ejemplo los totales al
+ * pie de un reporte, que si se ven igual que los demás se leen como un día más.
+ */
+export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emptyMessage = 'Sin registros', extraToolbar = '', rowClass = null }) {
   const state = { page: 1, query: '' };
 
   function filteredRows() {
@@ -95,7 +99,10 @@ export function renderTable({ columns, rows, searchKeys = [], pageSize = 10, emp
       ? `No se encontró nada con “${escapeHtml(state.query.trim())}”. Revisa cómo está escrito o borra la búsqueda para ver todo.`
       : escapeHtml(emptyMessage);
     const tbody = pageRows.length
-      ? `<tbody>${pageRows.map((r) => `<tr>${columns.map((c) => `<td>${c.format ? c.format(r) : escapeHtml(r[c.key] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>`
+      ? `<tbody>${pageRows.map((r) => {
+          const cls = rowClass ? rowClass(r) : '';
+          return `<tr${cls ? ` class="${escapeHtml(cls)}"` : ''}>${columns.map((c) => `<td>${c.format ? c.format(r) : escapeHtml(r[c.key] ?? '')}</td>`).join('')}</tr>`;
+        }).join('')}</tbody>`
       : `<tbody><tr><td colspan="${columns.length}" class="table-empty">${vacio}</td></tr></tbody>`;
 
     const wrap = container.querySelector('.table-wrap');
