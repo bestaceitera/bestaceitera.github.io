@@ -19,7 +19,8 @@ function repartir(total, n) {
 }
 
 async function renderComisiones(el) {
-  let range = applyRangePreset('mes');
+  let preset = 'mes';
+  let range = applyRangePreset(preset);
 
   async function draw() {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
@@ -128,7 +129,7 @@ async function renderComisiones(el) {
       const nombre = e.target.dataset.emp;
       if (nombre) showEmployeeDetail(agg[nombre]);
     });
-    bindRangeControls(el, (r) => { range = r; draw(); });
+    bindRangeControls(el, (r, p) => { range = r; preset = p; draw(); }, { activo: preset });
   }
 
   function showEmployeeDetail(r) {

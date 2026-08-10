@@ -1,6 +1,6 @@
 import { getAll, getByDateRange } from '../data.js';
-import { renderTable, dateRangePresetButtons, bindRangeControls } from '../ui.js';
-import { formatQ, todayISO, round2 } from '../utils.js';
+import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
+import { formatQ, round2 } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
 import { renderComisiones } from './reporteComisiones.js';
@@ -86,7 +86,12 @@ async function render(container) {
 
   // ---------------- Ventas ----------------
   async function renderVentas(el) {
-    let range = { from: todayISO(), to: todayISO() };
+    // Abre en el mes en curso y deja marcado el botón del período, igual que
+    // Ventas, Caja y los demás reportes. Antes abría en "hoy" SIN marcar ningún
+    // botón: el reporte parecía tener solo dos ventas y no había forma de saber
+    // qué período se estaba viendo ni qué se estaba exportando.
+    let preset = 'mes';
+    let range = applyRangePreset(preset);
 
     async function draw() {
       el.innerHTML = '<div class="empty-state">Cargando…</div>';
@@ -105,7 +110,7 @@ async function render(container) {
       el.querySelector('#rep-ventas-table').innerHTML = t.html;
       t.mount(el.querySelector('#rep-ventas-table'));
       bindExportButtons(el, { title: 'Reporte de ventas', columns: cols, getRows: () => rows, filename: 'reporte_ventas' });
-      bindRangeControls(el, (r) => { range = r; draw(); });
+      bindRangeControls(el, (r, p) => { range = r; preset = p; draw(); }, { activo: preset });
     }
     await draw();
   }

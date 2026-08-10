@@ -109,13 +109,26 @@ async function renderBancos(el) {
       porRango('deposits', range, { max: 1000 }),
     ]);
 
-    // Lo que entró por transferencia, venga de una venta o de una orden.
+    // Lo que entró por transferencia o tarjeta, venga de una venta o de una orden:
+    // dinero que NO pasó por el cajón y por tanto llegó a una cuenta.
+    //
+    // Antes solo se contaban los cobros que tuvieran banco anotado. Los cobros
+    // registrados antes de que existiera el catálogo de bancos no lo tienen, así
+    // que quedaban fuera y el reporte decía "recibido Q0" habiendo cobrado. Ahora
+    // salen como "Sin asignar": el total es el real y de paso se ve cuáles falta
+    // asignarle la cuenta.
+    //
+    // En un cobro MIXTO solo una parte fue al banco, y el documento no guarda el
+    // reparto; por eso solo se incluye si tiene banco anotado, como antes.
+    const SIN_ASIGNAR = 'Sin asignar';
+    const aBanco = (r) => r.formaPago === 'transferencia' || r.formaPago === 'tarjeta'
+      || (r.formaPago === 'mixto' && r.bancoNombre);
     const entradas = [
-      ...ventas.filter((v) => v.bancoNombre).map((v) => ({
-        fecha: v.fecha, banco: v.bancoNombre, cuenta: v.bancoCuenta || '', concepto: `Venta ${v.numero}`,
+      ...ventas.filter(aBanco).map((v) => ({
+        fecha: v.fecha, banco: v.bancoNombre || SIN_ASIGNAR, cuenta: v.bancoCuenta || '', concepto: `Venta ${v.numero}`,
         cliente: v.clienteNombre || '', monto: Number(v.total) || 0 })),
-      ...ordenes.filter((o) => o.bancoNombre).map((o) => ({
-        fecha: o.fecha, banco: o.bancoNombre, cuenta: o.bancoCuenta || '', concepto: `Orden ${o.numero}`,
+      ...ordenes.filter(aBanco).map((o) => ({
+        fecha: o.fecha, banco: o.bancoNombre || SIN_ASIGNAR, cuenta: o.bancoCuenta || '', concepto: `Orden ${o.numero}`,
         cliente: o.clienteNombre || '', monto: Number(o.total) || 0 })),
     ].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
 
