@@ -1,4 +1,4 @@
-import { getAll, getByDateRange, addRecord } from '../data.js';
+import { getByDateRange, addRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, compressImageForFirestore, todayISO, nowTimeHM } from '../utils.js';

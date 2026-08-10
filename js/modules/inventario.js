@@ -1,8 +1,7 @@
-import { getAll, getByDateRange, addRecord } from '../data.js';
-import { renderTable, openModal, closeModal, toast, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
-import { formatQ, formatDateTime, escapeHtml, round2, todayISO } from '../utils.js';
+import { getAll, getByDateRange } from '../data.js';
+import { renderTable, toast, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
+import { formatQ, formatDateTime, escapeHtml } from '../utils.js';
 import { openUsoPropioForm } from './usoPropio.js';
-import { getCurrentUser } from '../auth.js';
 import { stockBajoHtml, productosBajoMinimo } from './stockBajo.js';
 
 // El período elegido se guarda fuera de render() para que no se pierda cuando la

@@ -2,7 +2,7 @@ import { getAll, addRecord, nextFolio } from '../data.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast } from '../ui.js';
-import { escapeHtml, formatQ, formatDateTime, round2, todayISO } from '../utils.js';
+import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 
 async function render(container) {
