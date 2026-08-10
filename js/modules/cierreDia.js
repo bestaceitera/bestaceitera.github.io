@@ -3,7 +3,7 @@
 // El cuadre de Caja solo sirve para HOY. Estos dos formularios trabajan sobre
 // CUALQUIER día, que es lo que hace falta cuando se cargan ventas atrasadas o
 // cuando el depósito se hace al día siguiente.
-import { addRecord, updateRecord } from '../data.js';
+import { addRecord, updateRecord, removeRecord, getAll } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
 import { openModal, closeModal, toast } from '../ui.js';
 import { escapeHtml, formatQ, round2, formatDateLong, nowTimeHM, compressImageForFirestore } from '../utils.js';
@@ -310,6 +310,93 @@ export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
       toast('No se pudo registrar el depósito: ' + err.message, 'danger', 6000);
       btn.disabled = false;
       btn.textContent = 'Registrar depósito';
+    }
+  });
+}
+
+/**
+ * Los depósitos de un día, con su boleta, sin salir de Ventas.
+ *
+ * Antes había que ir hasta Depósitos bancarios a buscar la foto, y un depósito
+ * cargado al banco equivocado o con la boleta cambiada no se podía deshacer.
+ * Borrar uno elimina TAMBIÉN su salida de caja: si quedara suelta, el día
+ * seguiría diciendo que ese dinero ya salió al banco y no cuadraría nunca.
+ */
+export function abrirDepositosDelDia({ fecha, depositos = [], onSaved }) {
+  let lista = [...depositos];
+  let huboCambios = false;
+
+  const filas = () => lista.map((d) => `
+    <div class="deposito-item">
+      <div class="deposito-datos">
+        <b>${formatQ(d.monto)}</b> — ${escapeHtml(d.banco || 'sin banco')}
+        ${d.bancoCuenta ? `<span class="text-muted">· ${escapeHtml(d.bancoCuenta)}</span>` : ''}
+        <div class="text-muted" style="font-size:12.5px">
+          ${d.boleta ? `Boleta ${escapeHtml(d.boleta)} · ` : ''}${escapeHtml(d.hora || '')}${d.usuarioNombre ? ` · ${escapeHtml(d.usuarioNombre)}` : ''}
+        </div>
+        ${d.observaciones ? `<div class="text-muted" style="font-size:12.5px">${escapeHtml(d.observaciones)}</div>` : ''}
+      </div>
+      ${d.fotoBase64
+        ? `<img src="${d.fotoBase64}" class="deposito-foto" data-zoom="${d.id}" alt="Boleta del depósito" title="Tócala para verla grande">`
+        : '<div class="deposito-sinfoto">Sin foto<br>de la boleta</div>'}
+      <button type="button" class="btn btn-danger btn-sm" data-borrar="${d.id}">Eliminar</button>
+    </div>`).join('');
+
+  openModal(`Depósitos — ${formatDateLong(fecha)}`, `
+    <div id="dl-lista">${filas()}</div>
+    <p class="text-muted" style="font-size:12.5px">
+      Si te equivocaste de banco o de boleta, elimina el depósito y vuelve a
+      registrarlo. Al eliminarlo, ese dinero vuelve a contarse como pendiente de depositar.
+    </p>
+    <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancel-form">Cerrar</button></div>
+  `);
+
+  const cerrar = () => { closeModal(); if (huboCambios && onSaved) onSaved(); };
+  document.getElementById('cancel-form').addEventListener('click', cerrar);
+
+  document.getElementById('dl-lista').addEventListener('click', async (e) => {
+    const foto = e.target.closest('[data-zoom]');
+    if (foto) { foto.classList.toggle('grande'); return; }
+
+    const btn = e.target.closest('[data-borrar]');
+    if (!btn) return;
+    const dep = lista.find((d) => d.id === btn.dataset.borrar);
+    if (!dep) return;
+
+    // La confirmación va en el mismo botón y no en un diálogo aparte: solo hay
+    // un modal a la vez, así que un confirmDialog cerraría esta lista y ya no
+    // habría dónde volver. Dos toques: el primero avisa, el segundo borra.
+    if (btn.dataset.confirmar !== 'si') {
+      document.querySelectorAll('#dl-lista [data-borrar]').forEach((otro) => {
+        otro.dataset.confirmar = 'no';
+        otro.textContent = 'Eliminar';
+        otro.classList.remove('btn-confirmar');
+      });
+      btn.dataset.confirmar = 'si';
+      btn.textContent = '¿Seguro? Toca otra vez';
+      btn.classList.add('btn-confirmar');
+      toast('Al eliminarlo, ese dinero vuelve a quedar pendiente de depositar.', 'info', 5000);
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Eliminando…';
+    try {
+      // Primero el rastro en caja y luego el depósito: si algo falla a media
+      // operación, es preferible que sobre el depósito (visible y borrable de
+      // nuevo) a que quede una salida de caja sin dueño, que nadie encontraría.
+      const movs = await getAll('cashMovements', { filters: [['referenciaId', '==', dep.id]] });
+      for (const m of movs) await removeRecord('cashMovements', m.id);
+      await removeRecord('deposits', dep.id);
+      lista = lista.filter((d) => d.id !== dep.id);
+      huboCambios = true;
+      toast(`Depósito de ${formatQ(dep.monto)} eliminado.`, 'success', 5000);
+      if (!lista.length) { cerrar(); return; }
+      document.getElementById('dl-lista').innerHTML = filas();
+    } catch (err) {
+      toast('No se pudo eliminar el depósito: ' + err.message, 'danger', 6000);
+      btn.disabled = false;
+      btn.textContent = 'Eliminar';
     }
   });
 }

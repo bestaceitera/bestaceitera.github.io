@@ -122,9 +122,14 @@ service cloud.firestore {
              .hasOnly(['anulado', 'motivoReapertura', 'reabiertoPor', 'reabiertoEn', 'updatedAt']));
       allow delete: if isAdmin();
     }
+    // El empleado es quien va al banco, así que también es quien se da cuenta de
+    // que cargó el depósito a la cuenta equivocada o le puso otra boleta. Puede
+    // borrarlo y volver a registrarlo bien; al borrarlo, su salida de caja se
+    // borra con él y el dinero vuelve a quedar pendiente de depositar, así que
+    // no hay forma de hacer desaparecer efectivo por esta vía.
     match /deposits/{id} {
-      allow read, create: if soloRegistrar();
-      allow update, delete: if isAdmin();
+      allow read, create, delete: if soloRegistrar();
+      allow update: if isAdmin();
     }
 
     // ---- Retiros pendientes de devolver ----

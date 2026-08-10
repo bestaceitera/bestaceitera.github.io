@@ -3,7 +3,7 @@ import { openUsoPropioForm } from './usoPropio.js';
 import { openSaleForm } from './ventaForm.js';
 import { listarBancos } from './bancos.js';
 import { cuadrePorFecha } from './cuadreCore.js';
-import { abrirCierreDia, abrirDepositoDia } from './cierreDia.js';
+import { abrirCierreDia, abrirDepositoDia, abrirDepositosDelDia } from './cierreDia.js';
 import { openModal, closeModal, toast, confirmDialog, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
@@ -32,6 +32,9 @@ async function render(container, profile) {
   let porDia = new Map();
   let cierres = new Map();
   let anulados = new Map();
+  // Los depósitos ya hechos de cada día, con su foto, para poder revisar la
+  // boleta aquí mismo en vez de ir a buscarla a Depósitos bancarios.
+  let depositosPorDia = new Map();
   let busqueda = '';
   let pagina = 1;
   let rango = rangoGuardado || applyRangePreset('mes');
@@ -63,12 +66,18 @@ async function render(container, profile) {
     cargando = true;
     pintar();
     try {
-      const [r, movimientos, closings] = await Promise.all([
+      const [r, movimientos, closings, depos] = await Promise.all([
         getByDateRange('sales', rango, { max: 1500 }),
         getByDateRange('cashMovements', rango, { max: 4000 }),
         getByDateRange('cashClosings', rango, { max: 500 }),
+        getByDateRange('deposits', rango, { max: 500 }),
       ]);
       if (mio !== peticion) return;
+      depositosPorDia = new Map();
+      depos.filas.forEach((d) => {
+        if (!depositosPorDia.has(d.fecha)) depositosPorDia.set(d.fecha, []);
+        depositosPorDia.get(d.fecha).push(d);
+      });
       // Dentro de un mismo día se ordena por hora: la más reciente arriba.
       sales = r.filas.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       truncado = r.truncado;
@@ -85,6 +94,7 @@ async function render(container, profile) {
       porDia = new Map();
       cierres = new Map();
       anulados = new Map();
+      depositosPorDia = new Map();
       toast('No se pudieron cargar las ventas: ' + err.message, 'danger', 6000);
     } finally {
       if (mio === peticion) { cargando = false; pintar(); }
@@ -148,10 +158,20 @@ async function render(container, profile) {
            ${reaperturas > 0 ? 'Volver a cerrar' : 'Cerrar día'}
          </button>`;
 
+    // Lo ya depositado es un botón, no una etiqueta: abre la boleta aquí mismo.
+    // Antes había que irse a Depósitos bancarios solo para ver la foto.
+    const hechos = depositosPorDia.get(fecha) || [];
+    const conFoto = hechos.filter((d) => d.fotoBase64).length;
+    const verDepositos = hechos.length
+      ? `<button class="btn btn-sm chip-estado ok" data-verdepositos="${fecha}"
+           title="Ver la boleta del depósito y, si te equivocaste de banco, eliminarlo">
+           ✓ Depositado ${formatQ(depositado)} ·
+           ${conFoto === hechos.length ? '📷 ver boleta' : conFoto ? `📷 ${conFoto} de ${hechos.length}` : '⚠ sin foto'}
+         </button>`
+      : '';
+
     const chipDeposito = falta <= 0.009
-      ? (depositado > 0
-          ? `<span class="chip-estado ok">✓ Depositado ${formatQ(depositado)}</span>`
-          : `<span class="chip-estado neutro">Sin efectivo que depositar</span>`)
+      ? (depositado > 0 ? '' : '<span class="chip-estado neutro">Sin efectivo que depositar</span>')
       : `<button class="btn btn-depositar btn-sm" data-deposito="${fecha}">
            🏦 Depositar ${formatQ(falta)}${depositado > 0 ? ' (falta)' : ''}
          </button>`;
@@ -163,6 +183,7 @@ async function render(container, profile) {
         ↩ devolver a caja chica ${formatQ(dia.reponerCajaChica)}</span>` : ''}
       ${reaperturas > 0 ? `<span class="chip-reabierto" title="Este día se cerró y se volvió a abrir">↻ reabierto ${reaperturas > 1 ? reaperturas + ' veces' : ''}</span>` : ''}
       <span class="spacer"></span>
+      ${verDepositos}
       ${chipDeposito}
       ${chipCierre}
     </div>`;
@@ -254,9 +275,9 @@ async function render(container, profile) {
     openUsoPropioForm({ products, empleados, onSaved: () => render(container, profile) });
   });
   card.addEventListener('click', (e) => {
-    const boton = e.target.closest('[data-view], [data-cierre], [data-deposito]');
+    const boton = e.target.closest('[data-view], [data-cierre], [data-deposito], [data-verdepositos]');
     if (!boton) return;
-    const { view, cierre, deposito } = boton.dataset;
+    const { view, cierre, deposito, verdepositos } = boton.dataset;
     if (view) {
       const venta = sales.find((s) => s.id === view);
       if (venta) viewDetail(venta);
@@ -267,6 +288,8 @@ async function render(container, profile) {
       listarBancos().then((bancos) => {
         abrirDepositoDia({ fecha: deposito, dia: porDia.get(deposito), bancos, onSaved: cargar });
       });
+    } else if (verdepositos) {
+      abrirDepositosDelDia({ fecha: verdepositos, depositos: depositosPorDia.get(verdepositos) || [], onSaved: cargar });
     }
   });
   await cargar();
