@@ -71,12 +71,39 @@ async function render(container) {
     const stats = computeExpected(movements);
     const hasFondo = movements.some((m) => m.categoria === 'fondo_inicial');
 
+    // El vuelto NO es dinero del negocio que se va: es el cambio del billete con
+    // el que pagó el cliente. Por eso se descuenta de los dos lados y "Salió de
+    // caja" puede decir Q0 aunque abajo se listen salidas por vuelto. Sin decirlo
+    // aquí la pantalla parece contradecirse sola, y quien la lee desconfía del
+    // total con razón.
+    const recibidoBruto = round2(stats.totalEntradas + stats.vueltos);
+
     el.innerHTML = `
       <div class="grid grid-4">
-        <div class="stat-card"><div class="label">Fondo inicial</div><div class="value">${formatQ(stats.fondoInicial)}</div></div>
-        <div class="stat-card"><div class="label">Entró en efectivo hoy${stats.vueltos > 0 ? ' <span class="text-muted" style="font-weight:400">(ya sin vueltos)</span>' : ''}</div><div class="value" style="color:var(--success)">${formatQ(stats.totalEntradas)}</div></div>
-        <div class="stat-card"><div class="label">Salió de caja hoy</div><div class="value" style="color:var(--danger)">${formatQ(stats.totalSalidas)}</div></div>
-        <div class="stat-card"><div class="label">Dinero esperado en caja</div><div class="value">${formatQ(stats.esperado)}</div></div>
+        <div class="stat-card">
+          <div class="label">Fondo inicial</div>
+          <div class="value">${formatQ(stats.fondoInicial)}</div>
+          <div class="sub">la caja chica con la que abriste</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Entró en efectivo hoy</div>
+          <div class="value" style="color:var(--success)">${formatQ(stats.totalEntradas)}</div>
+          <div class="sub">${stats.vueltos > 0
+            ? `te dieron ${formatQ(recibidoBruto)} y devolviste ${formatQ(stats.vueltos)} de vuelto`
+            : 'ventas, servicios y otros ingresos'}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Salió de caja hoy</div>
+          <div class="value" style="color:var(--danger)">${formatQ(stats.totalSalidas)}</div>
+          <div class="sub">${stats.vueltos > 0
+            ? `los ${formatQ(stats.vueltos)} de vuelto no cuentan aquí: eran del cliente, no tuyos`
+            : 'gastos, compras, retiros y depósitos'}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Dinero esperado en caja</div>
+          <div class="value">${formatQ(stats.esperado)}</div>
+          <div class="sub">${formatQ(stats.fondoInicial)} + ${formatQ(stats.totalEntradas)} − ${formatQ(stats.totalSalidas)}</div>
+        </div>
       </div>
       ${!hasFondo ? `
         <div class="card mt-16">
