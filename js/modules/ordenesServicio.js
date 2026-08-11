@@ -363,9 +363,12 @@ async function render(container) {
         const clienteNombre = clienteId === 'CF' ? CONSUMIDOR_FINAL.nombre : clienteOpt.dataset.nombre;
         const numero = await nextFolio('serviceOrders', { prefix: 'S', pad: 1 });
         const vuelto = (formaPago === 'efectivo' || formaPago === 'mixto') ? Math.max(0, round2(recibido - total)) : 0;
+        // La fecha se lee UNA vez: la orden, su salida de inventario y sus
+        // movimientos de caja tienen que quedar todos en el mismo día.
+        const fechaOrden = $('os-fecha').value || todayISO();
         const orderId = await addRecord('serviceOrders', {
           numero,
-          fecha: $('os-fecha').value || todayISO(),
+          fecha: fechaOrden,
           clienteId, clienteNombre,
           vehiculo: { marca: $('os-v-marca').value.trim(), modelo: $('os-v-modelo').value.trim(), anio: $('os-v-anio').value, placa: $('os-v-placa').value.trim().toUpperCase() },
           servicios: selectedServicios(),
@@ -386,16 +389,16 @@ async function render(container) {
         });
         // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.
         for (const item of productCart.filter((i) => i.productoId)) {
-          await applyStockChange(item.productoId, -item.cantidad, { motivo: 'servicio', referenciaId: orderId, usuario: currentUser });
+          await applyStockChange(item.productoId, -item.cantidad, { motivo: 'servicio', referenciaId: orderId, usuario: currentUser, fecha: fechaOrden });
         }
         // Solo el efectivo físico recibido entra al arqueo de caja (tarjeta/transferencia no).
         const efectivoEnCaja = formaPago === 'efectivo' ? recibido : formaPago === 'mixto' ? efectivoMixto : 0;
         const responsable = empleadosOrden.map((e) => e.empleadoNombre).filter(Boolean).join(', ');
         if (efectivoEnCaja > 0) {
-          await addCashMovement({ tipo: 'entrada', categoria: 'servicio', monto: efectivoEnCaja, motivo: `Orden ${numero} — ${clienteNombre}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO(), responsable });
+          await addCashMovement({ tipo: 'entrada', categoria: 'servicio', monto: efectivoEnCaja, motivo: `Orden ${numero} — ${clienteNombre}`, referenciaId: orderId, fecha: fechaOrden, responsable });
         }
         if (vuelto > 0) {
-          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto orden ${numero}`, referenciaId: orderId, fecha: $('os-fecha').value || todayISO(), responsable });
+          await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto orden ${numero}`, referenciaId: orderId, fecha: fechaOrden, responsable });
         }
         toast('Orden de servicio guardada.', 'success');
         closeModal();

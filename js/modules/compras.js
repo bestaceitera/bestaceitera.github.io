@@ -135,25 +135,28 @@ async function render(container) {
         const provOpt = $('c-proveedor').selectedOptions[0];
         const total = round2(cart.reduce((s, i) => s + i.subtotal, 0));
         const numero = await nextFolio('purchases', { prefix: 'C', pad: 1 });
+        // La fecha se lee UNA vez: la compra, su movimiento de inventario y su
+        // salida de caja tienen que quedar todos en el mismo día.
+        const fechaCompra = $('c-fecha').value || todayISO();
         const purchaseId = await addRecord('purchases', {
           numero,
           proveedorId: provOpt.value,
           proveedorNombre: provOpt.dataset.nombre,
-          fecha: $('c-fecha').value || todayISO(),
+          fecha: fechaCompra,
           usuarioId: user.uid,
           usuarioNombre: user.nombre,
           items: cart,
           total,
         });
         for (const item of cart) {
-          await applyStockChange(item.productoId, item.cantidad, { motivo: 'compra', referenciaId: purchaseId, usuario: user });
+          await applyStockChange(item.productoId, item.cantidad, { motivo: 'compra', referenciaId: purchaseId, usuario: user, fecha: fechaCompra });
         }
         // La salida de caja lleva la fecha de la compra, no la de hoy: así registrar
         // hoy una compra de la semana pasada no descuadra el efectivo de hoy.
         await addCashMovement({
           tipo: 'salida', categoria: 'compra', monto: total,
           motivo: `Compra ${numero} — ${provOpt.dataset.nombre}`, referenciaId: purchaseId,
-          fecha: $('c-fecha').value || todayISO(),
+          fecha: fechaCompra,
         });
         toast('Compra registrada. Inventario actualizado.', 'success');
         closeModal();

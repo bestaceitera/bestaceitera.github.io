@@ -33,10 +33,16 @@ function responsableDe(m) {
   return m.responsable || m.usuarioNombre || '';
 }
 
+// La pestaña elegida se recuerda fuera de render(): al registrar un movimiento,
+// la escucha en vivo vuelve a dibujar toda la pantalla y antes eso devolvía al
+// usuario a "Control de efectivo". Se registraba un retiro y parecía que no se
+// había guardado, porque la lista de pendientes ya no estaba a la vista.
+let pestanaActiva = 'control';
+
 async function render(container) {
   container.innerHTML = `
     <div class="toolbar" style="margin-bottom:0">
-      <button class="btn btn-secondary btn-sm tab-btn active" data-tab="control">Control de efectivo</button>
+      <button class="btn btn-secondary btn-sm tab-btn" data-tab="control">Control de efectivo</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="cuadre">Cuadre diario</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="devoluciones">Devoluciones a caja</button>
       <button class="btn btn-secondary btn-sm tab-btn" data-tab="historial">Historial</button>
@@ -47,6 +53,7 @@ async function render(container) {
   const content = container.querySelector('#caja-tab-content');
 
   function setActiveTab(tab) {
+    pestanaActiva = tab;
     tabButtons.forEach((b) => {
       const isActive = b.dataset.tab === tab;
       b.classList.toggle('btn-primary', isActive);
@@ -56,7 +63,7 @@ async function render(container) {
     renderers[tab](content);
   }
   tabButtons.forEach((b) => b.addEventListener('click', () => setActiveTab(b.dataset.tab)));
-  setActiveTab('control');
+  setActiveTab(pestanaActiva);
 
   // ---------------- Control de efectivo ----------------
   // Las cuatro pestañas piden datos y después pintan. Entre una cosa y otra el
@@ -95,9 +102,11 @@ async function render(container) {
         <div class="stat-card">
           <div class="label">Salió de caja hoy</div>
           <div class="value" style="color:var(--danger)">${formatQ(stats.totalSalidas)}</div>
-          <div class="sub">${stats.vueltos > 0
-            ? `no se gastó nada del negocio · los ${formatQ(stats.vueltos)} de vueltos se reponen al cerrar`
-            : 'gastos, compras, retiros y depósitos'}</div>
+          <div class="sub">${stats.vueltos === 0
+            ? 'gastos, compras, retiros y depósitos'
+            : stats.totalSalidas === 0
+              ? `no se gastó nada del negocio · los ${formatQ(stats.vueltos)} de vueltos se reponen al cerrar`
+              : `gastos, compras, retiros y depósitos · los ${formatQ(stats.vueltos)} de vueltos van aparte`}</div>
         </div>
         <div class="stat-card">
           <div class="label">Dinero esperado en caja</div>
@@ -113,8 +122,9 @@ async function render(container) {
       ${stats.vueltos > 0 ? `
         <div class="nota-vueltos mt-16">
           <b>Diste ${formatQ(stats.vueltos)} de vueltos hoy.</b>
-          Esos billetes salieron de la caja chica, pero el mismo cliente los repuso al pagar:
-          por eso el negocio <b>no perdió nada</b> y arriba dice ${formatQ(stats.totalSalidas)}.
+          Esos billetes salieron de la caja chica, pero el mismo cliente los repuso al pagar,
+          así que el negocio <b>no perdió nada</b> y por eso no se suman a
+          "salió de caja"${stats.totalSalidas > 0 ? ` (esos ${formatQ(stats.totalSalidas)} son gastos, retiros o depósitos, que sí salieron de verdad)` : ''}.
           Al <b>cerrar el día</b> vas a regresar ${formatQ(stats.vueltos)} del dinero de las ventas
           a la caja chica, para dejarla otra vez en ${formatQ(stats.fondoInicial || 105)}.
           Eso no cambia cuánto depositas: solo acomoda los billetes.

@@ -366,7 +366,7 @@ export async function openSaleForm({ onSaved } = {}) {
 
       // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.
       for (const item of cart.filter((i) => i.productoId)) {
-        await applyStockChange(item.productoId, -item.cantidad, { motivo: 'venta', referenciaId: saleId, usuario: user });
+        await applyStockChange(item.productoId, -item.cantidad, { motivo: 'venta', referenciaId: saleId, usuario: user, fecha: fechaVenta });
       }
 
       // Solo se registra en caja el efectivo físico que realmente entra al cajón.

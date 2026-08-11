@@ -411,12 +411,15 @@ async function render(container, profile) {
           fecha: nuevaFecha,
           empleadosComision: marcados,
         });
-        // Si cambió la fecha, sus movimientos de caja deben moverse al mismo día
-        // para que el cuadre de cada día siga cuadrando.
+        // Si cambió la fecha, TODO el rastro de la venta se mueve con ella: el
+        // dinero, para que el cuadre de cada día siga cuadrando, y la salida de
+        // inventario, para que el kardex no diga que el producto salió un día en
+        // el que no hubo venta. Antes solo se movía la caja y el inventario
+        // quedaba anclado al día en que se tecleó.
         if (nuevaFecha !== s.fecha) {
-          const movs = await getAll('cashMovements', { filters: [['referenciaId', '==', s.id]] });
-          for (const m of movs) {
-            await updateRecord('cashMovements', m.id, { fecha: nuevaFecha });
+          for (const coleccion of ['cashMovements', 'inventoryMovements']) {
+            const movs = await getAll(coleccion, { filters: [['referenciaId', '==', s.id]] });
+            for (const m of movs) await updateRecord(coleccion, m.id, { fecha: nuevaFecha });
           }
         }
         toast('Venta actualizada.', 'success');

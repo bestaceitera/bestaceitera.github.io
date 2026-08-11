@@ -1,6 +1,6 @@
 import { getAll } from '../data.js';
 import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
-import { formatQ, round2 } from '../utils.js';
+import { formatQ, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
 import { renderComisiones } from './reporteComisiones.js';
@@ -224,7 +224,7 @@ async function render(container) {
         <div class="toolbar">
           <select id="rep-compras-prov" style="max-width:260px">
             <option value="">Todos los proveedores</option>
-            ${suppliers.map((s) => `<option value="${s.id}" ${s.id === proveedorFiltro ? 'selected' : ''}>${s.empresa}</option>`).join('')}
+            ${suppliers.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === proveedorFiltro ? 'selected' : ''}>${escapeHtml(s.empresa || '')}</option>`).join('')}
           </select>
           <div class="spacer"></div>${exportButtonsHtml()}
         </div>
