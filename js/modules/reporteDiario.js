@@ -8,7 +8,7 @@
 import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
-import { repartirEntre } from './comisionCore.js';
+import { repartirEntre, resumenPorEmpleado } from './comisionCore.js';
 import { porRango, avisoDeTope } from './reporteCore.js';
 
 /**
@@ -18,47 +18,36 @@ import { porRango, avisoDeTope } from './reporteCore.js';
  * es la pregunta que sigue siempre después de "¿cuánto vendió?".
  */
 function armarMatriz(ventas, ordenes) {
-  const dias = new Map();        // fecha -> { fecha, total, porEmpleado: {} }
-  const empleados = new Map();   // nombre -> { nombre, total, porPct: {} }
-
-  const anotar = (fecha, nombre, monto, pct) => {
+  const dias = new Map();   // fecha -> { fecha, total, sinAsignar, porEmpleado: {} }
+  const delDia = (fecha) => {
     if (!dias.has(fecha)) dias.set(fecha, { fecha, total: 0, sinAsignar: 0, porEmpleado: {} });
-    const d = dias.get(fecha);
-    d.porEmpleado[nombre] = round2((d.porEmpleado[nombre] || 0) + monto);
-    if (!empleados.has(nombre)) empleados.set(nombre, { nombre, total: 0, porPct: {} });
-    const e = empleados.get(nombre);
-    e.total = round2(e.total + monto);
-    e.porPct[pct] = round2((e.porPct[pct] || 0) + monto);
+    return dias.get(fecha);
   };
 
   const procesar = (registros, campoEmpleados) => {
     for (const r of registros) {
-      const fecha = r.fecha || 'sin fecha';
-      if (!dias.has(fecha)) dias.set(fecha, { fecha, total: 0, sinAsignar: 0, porEmpleado: {} });
-      const d = dias.get(fecha);
+      const d = delDia(r.fecha || 'sin fecha');
       d.total = round2(d.total + (Number(r.total) || 0));
       const emps = r[campoEmpleados] || [];
       // Las ventas viejas, de antes de que se exigiera anotar quién vendió, no
       // se pierden: suman al total del día y se muestran aparte como sin asignar.
       if (!emps.length) { d.sinAsignar = round2(d.sinAsignar + (Number(r.total) || 0)); continue; }
       const partes = repartirEntre(Number(r.total) || 0, emps.length);
-      emps.forEach((e, i) => anotar(fecha, e.empleadoNombre || '(sin nombre)', partes[i], Number(e.comisionPct) || 0));
+      emps.forEach((e, i) => {
+        const nombre = e.empleadoNombre || '(sin nombre)';
+        d.porEmpleado[nombre] = round2((d.porEmpleado[nombre] || 0) + partes[i]);
+      });
     }
   };
   procesar(ventas, 'empleadosComision');
   procesar(ordenes, 'empleados');
 
-  for (const e of empleados.values()) {
-    // La comisión se calcula sobre el total acumulado del período por cada
-    // porcentaje, igual que en el reporte de comisiones.
-    e.comision = round2(Object.entries(e.porPct).reduce((s, [pct, monto]) => s + (monto * Number(pct)) / 100, 0));
-    const pcts = Object.keys(e.porPct).map(Number);
-    e.pctLabel = pcts.length === 1 ? `${pcts[0]}%` : 'varios %';
-  }
-
+  // El total y la comisión de cada empleado los da comisionCore, la MISMA
+  // función que usan el reporte de ventas y el de comisiones. Aquí solo se
+  // conserva el desglose día por día, que es lo propio de este reporte.
   return {
     dias: [...dias.values()].sort((a, b) => (a.fecha < b.fecha ? 1 : -1)),
-    empleados: [...empleados.values()].sort((a, b) => b.total - a.total),
+    empleados: resumenPorEmpleado(ventas, ordenes).map((e) => ({ ...e, total: e.totalVendido })),
   };
 }
 

@@ -5,7 +5,8 @@ import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
 import { renderComisiones } from './reporteComisiones.js';
 import { renderDiario } from './reporteDiario.js';
-import { porRango, avisoDeTope } from './reporteCore.js';
+import { porRango, avisoDeTope, detalleDe } from './reporteCore.js';
+import { resumenPorEmpleado } from './comisionCore.js';
 
 async function render(container) {
   container.innerHTML = `
@@ -86,22 +87,105 @@ async function render(container) {
 
     async function draw() {
       el.innerHTML = '<div class="empty-state">Cargando…</div>';
-      const ventas = await porRango('sales', range);
-      const rows = ventas
-        .map((s) => ({ numero: s.numero, fecha: s.fecha, cliente: s.clienteNombre, formaPago: s.formaPago, total: formatQ(s.total),
-          usuario: (s.empleadosComision || []).map((e) => e.empleadoNombre).join(', ') || '—' }));
-      const totalQ = round2(ventas.reduce((sum, s) => sum + Number(s.total || 0), 0));
-      const cols = [{ key: 'numero', label: 'No.' }, { key: 'fecha', label: 'Fecha' }, { key: 'cliente', label: 'Cliente' }, { key: 'formaPago', label: 'Pago' }, { key: 'total', label: 'Total' }, { key: 'usuario', label: 'Realizada por' }];
+      // Se incluyen también las órdenes de servicio: para el dueño "lo vendido"
+      // del período es todo lo que entró, no solo el mostrador. Antes el reporte
+      // solo traía ventas y el total no cuadraba con el de comisiones.
+      const [ventas, ordenes] = await Promise.all([
+        porRango('sales', range),
+        porRango('serviceOrders', range),
+      ]);
+      if (!el.isConnected) return;
+
+      const deVenta = (s) => ({
+        numero: s.numero, fecha: s.fecha, tipo: 'Venta', cliente: s.clienteNombre || '',
+        detalle: detalleDe(s), formaPago: s.formaPago || '', total: formatQ(s.total),
+        usuario: (s.empleadosComision || []).map((e) => e.empleadoNombre).join(', ') || '—',
+        _orden: `${s.fecha}|${s.numero}`, _monto: Number(s.total) || 0,
+      });
+      const deOrden = (o) => ({
+        numero: o.numero, fecha: o.fecha, tipo: 'Servicio', cliente: o.clienteNombre || '',
+        detalle: detalleDe(o), formaPago: o.formaPago || '', total: formatQ(o.total),
+        usuario: (o.empleados || []).map((e) => e.empleadoNombre).join(', ') || '—',
+        _orden: `${o.fecha}|${o.numero}`, _monto: Number(o.total) || 0,
+      });
+
+      const movimientos = [...ventas.map(deVenta), ...ordenes.map(deOrden)]
+        .sort((a, b) => (a._orden < b._orden ? 1 : -1));
+      const totalQ = round2(movimientos.reduce((s, r) => s + r._monto, 0));
+      const totalVentas = round2(ventas.reduce((s, v) => s + (Number(v.total) || 0), 0));
+      const totalServicios = round2(ordenes.reduce((s, o) => s + (Number(o.total) || 0), 0));
+
+      const cols = [
+        { key: 'numero', label: 'No.' }, { key: 'fecha', label: 'Fecha' }, { key: 'tipo', label: 'Tipo' },
+        { key: 'cliente', label: 'Cliente' }, { key: 'detalle', label: 'Qué se vendió' },
+        { key: 'formaPago', label: 'Pago' }, { key: 'total', label: 'Total' },
+        { key: 'usuario', label: 'Realizada por' },
+      ];
+      // La fila del total va DENTRO de la tabla para que salga en el PDF y en el
+      // Excel: un reporte que se lleva al banco o al contador tiene que traer su
+      // propia suma, no obligar a rehacerla a mano.
+      const filas = [...movimientos, {
+        numero: 'TOTAL', fecha: '', tipo: '', cliente: '',
+        detalle: `${ventas.length} venta(s) y ${ordenes.length} servicio(s)`,
+        formaPago: '', total: formatQ(totalQ), usuario: '',
+      }];
+
+      // Cuánto vendió cada quien y cuánto se le debe, con la MISMA cuenta que usa
+      // el reporte de comisiones.
+      const empleados = resumenPorEmpleado(ventas, ordenes);
+      const totalComisiones = round2(empleados.reduce((s, e) => s + e.comision, 0));
+      const colsEmp = [
+        { key: 'nombre', label: 'Empleado' }, { key: 'ventas', label: 'Ventas' },
+        { key: 'servicios', label: 'Servicios' }, { key: 'vendido', label: 'Vendió' },
+        { key: 'pct', label: '%' }, { key: 'comision', label: 'Comisión a pagar' },
+      ];
+      const filasEmp = [
+        ...empleados.map((e) => ({
+          nombre: e.nombre, ventas: e.ventas.length, servicios: e.servicios.length,
+          vendido: formatQ(e.totalVendido), pct: e.pctLabel, comision: formatQ(e.comision),
+        })),
+        { nombre: 'TOTAL', ventas: '', servicios: '', vendido: formatQ(round2(empleados.reduce((s, e) => s + e.totalVendido, 0))),
+          pct: '', comision: formatQ(totalComisiones) },
+      ];
+
       el.innerHTML = `
-        <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
-        ${avisoDeTope(ventas)}
-        <div class="stat-card mt-16" style="max-width:260px"><div class="label">Total del período</div><div class="value">${formatQ(totalQ)}</div></div>
-        <div class="card mt-16"><div id="rep-ventas-table"></div></div>
+        <div class="toolbar">${dateRangePresetButtons()}</div>
+        ${avisoDeTope(ventas, ordenes)}
+        <div class="grid grid-3 mt-16">
+          <div class="stat-card"><div class="label">Total vendido</div><div class="value">${formatQ(totalQ)}</div>
+            <div class="sub">${formatQ(totalVentas)} en ventas · ${formatQ(totalServicios)} en servicios</div></div>
+          <div class="stat-card"><div class="label">Ventas / servicios</div><div class="value">${ventas.length} / ${ordenes.length}</div></div>
+          <div class="stat-card"><div class="label">Comisiones a pagar</div><div class="value">${formatQ(totalComisiones)}</div></div>
+        </div>
+
+        <div class="section-title">Qué se vendió</div>
+        <div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-ventas-table"></div></div>
+
+        <div class="section-title">Cuánto vendió cada quien y su comisión</div>
+        <div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-ventas-emp"></div></div>
       `;
-      const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Sin ventas en el período.' });
-      el.querySelector('#rep-ventas-table').innerHTML = t.html;
-      t.mount(el.querySelector('#rep-ventas-table'));
-      bindExportButtons(el, { title: 'Reporte de ventas', columns: cols, getRows: () => rows, filename: 'reporte_ventas' });
+
+      const marcarTotal = (f) => (f.numero === 'TOTAL' || f.nombre === 'TOTAL' ? 'fila-total' : '');
+      const t = renderTable({ columns: cols, rows: filas, searchKeys: ['numero', 'cliente', 'detalle', 'usuario'],
+        pageSize: 25, emptyMessage: 'Sin ventas ni servicios en el período.', rowClass: marcarTotal });
+      const contVentas = el.querySelector('#rep-ventas-table');
+      contVentas.innerHTML = t.html;
+      t.mount(contVentas);
+
+      const tEmp = renderTable({ columns: colsEmp, rows: filasEmp, pageSize: 20,
+        emptyMessage: 'Nadie tiene ventas en el período.', rowClass: marcarTotal });
+      const contEmp = el.querySelector('#rep-ventas-emp');
+      contEmp.innerHTML = tEmp.html;
+      tEmp.mount(contEmp);
+
+      bindExportButtons(contVentas.closest('.card'), {
+        title: `Ventas y servicios (${range.from} a ${range.to})`,
+        columns: cols, getRows: () => filas, filename: 'reporte_ventas',
+      });
+      bindExportButtons(contEmp.closest('.card'), {
+        title: `Comisiones por empleado (${range.from} a ${range.to})`,
+        columns: colsEmp, getRows: () => filasEmp, filename: 'reporte_ventas_comisiones',
+      });
       bindRangeControls(el, (r, p) => { range = r; preset = p; draw(); }, { activo: preset });
     }
     await draw();

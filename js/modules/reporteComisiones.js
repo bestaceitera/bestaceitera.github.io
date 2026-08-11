@@ -3,7 +3,7 @@
 import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
-import { repartirEntre } from './comisionCore.js';
+import { resumenPorEmpleado } from './comisionCore.js';
 import { porRango, avisoDeTope } from './reporteCore.js';
 
 async function renderComisiones(el) {
@@ -18,46 +18,16 @@ async function renderComisiones(el) {
       porRango('serviceOrders', range),
       porRango('inventoryMovements', range, { max: 3000 }),
     ]);
-    const agg = {}; // nombre -> { nombre, ventas, servicios, totalVendido, porPct }
-
-    function acumular(nombre, tipo, detalle, monto, pct) {
-      const a = agg[nombre] = agg[nombre] || { nombre, ventas: [], servicios: [], totalVendido: 0, porPct: {} };
-      a[tipo].push(detalle);
-      a.totalVendido = round2(a.totalVendido + monto);
-      a.porPct[pct] = round2((a.porPct[pct] || 0) + monto);
-    }
-
     const ventasPeriodo = sales;
     const ordenesPeriodo = orders;
     const totalVentas = round2(ventasPeriodo.reduce((s, v) => s + v.total, 0));
     const totalServicios = round2(ordenesPeriodo.reduce((s, o) => s + o.total, 0));
     const totalNegocio = round2(totalVentas + totalServicios);
 
-    ventasPeriodo.forEach((s) => {
-      const emps = s.empleadosComision || [];
-      if (!emps.length) return;
-      const partes = repartirEntre(s.total, emps.length);
-      emps.forEach((e, i) => acumular(e.empleadoNombre, 'ventas',
-        { numero: s.numero, fecha: s.fecha, total: s.total, parte: partes[i], compartida: emps.length },
-        partes[i], Number(e.comisionPct) || 0));
-    });
-    ordenesPeriodo.forEach((o) => {
-      const emps = o.empleados || [];
-      if (!emps.length) return;
-      const partes = repartirEntre(o.total, emps.length);
-      emps.forEach((e, i) => acumular(e.empleadoNombre, 'servicios',
-        { numero: o.numero, fecha: o.fecha, total: o.total, parte: partes[i], compartida: emps.length },
-        partes[i], Number(e.comisionPct) || 0));
-    });
-
-    // La comisión se aplica al TOTAL acumulado del período, no a cada venta.
-    Object.values(agg).forEach((a) => {
-      a.comision = round2(Object.entries(a.porPct).reduce((s, [pct, monto]) => s + (monto * Number(pct)) / 100, 0));
-      const pcts = Object.keys(a.porPct).map(Number);
-      a.pctLabel = pcts.length === 1 ? `${pcts[0]}%` : 'varios %';
-    });
-
-    const sorted = Object.values(agg).sort((a, b) => b.totalVendido - a.totalVendido);
+    // El reparto y la comisión los hace comisionCore, la MISMA función que usan
+    // el reporte de ventas y el detalle diario. Antes cada uno tenía su copia.
+    const sorted = resumenPorEmpleado(ventasPeriodo, ordenesPeriodo);
+    const agg = Object.fromEntries(sorted.map((a) => [a.nombre, a]));
     const sumaDesglose = round2(sorted.reduce((s, r) => s + r.totalVendido, 0));
     const sinAsignar = round2(totalNegocio - sumaDesglose);
     const totalComisiones = round2(sorted.reduce((s, r) => s + r.comision, 0));
