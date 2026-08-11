@@ -77,7 +77,13 @@ function showLoginView() {
 function showAppView(profile) {
   document.getElementById('login-view').hidden = true;
   document.getElementById('app-view').hidden = false;
-  document.getElementById('sidebar-user').innerHTML = `<b>${escapeHtml(profile.nombre)}</b>${profile.role === 'admin' ? 'Administrador' : 'Empleado'}`;
+  // Si la cuenta se llama igual que su rol ("Administrador", "Empleado") no se
+  // repite dos veces: se muestra una sola línea.
+  const rol = profile.role === 'admin' ? 'Administrador' : 'Empleado';
+  const nombre = (profile.nombre || '').trim();
+  document.getElementById('sidebar-user').innerHTML = nombre && nombre !== rol
+    ? `<b>${escapeHtml(nombre)}</b>${rol}`
+    : `<b>${rol}</b>`;
   initRouter(profile);
 }
 
