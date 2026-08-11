@@ -96,7 +96,7 @@ async function render(container) {
           <div class="label">Salió de caja hoy</div>
           <div class="value" style="color:var(--danger)">${formatQ(stats.totalSalidas)}</div>
           <div class="sub">${stats.vueltos > 0
-            ? `los ${formatQ(stats.vueltos)} de vuelto no cuentan aquí: eran del cliente, no tuyos`
+            ? `no se gastó nada del negocio · los ${formatQ(stats.vueltos)} de vueltos se reponen al cerrar`
             : 'gastos, compras, retiros y depósitos'}</div>
         </div>
         <div class="stat-card">
@@ -105,6 +105,20 @@ async function render(container) {
           <div class="sub">${formatQ(stats.fondoInicial)} + ${formatQ(stats.totalEntradas)} − ${formatQ(stats.totalSalidas)}</div>
         </div>
       </div>
+
+      <!-- Sin esto, esta pantalla y la de cerrar el día parecen contradecirse:
+           aquí "salió Q0" y allá "devolver Q30 a la caja chica". Las dos son
+           ciertas y hablan de cosas distintas — el negocio no perdió nada, pero
+           los billetes chicos sí se movieron — así que se explica de una vez. -->
+      ${stats.vueltos > 0 ? `
+        <div class="nota-vueltos mt-16">
+          <b>Diste ${formatQ(stats.vueltos)} de vueltos hoy.</b>
+          Esos billetes salieron de la caja chica, pero el mismo cliente los repuso al pagar:
+          por eso el negocio <b>no perdió nada</b> y arriba dice ${formatQ(stats.totalSalidas)}.
+          Al <b>cerrar el día</b> vas a regresar ${formatQ(stats.vueltos)} del dinero de las ventas
+          a la caja chica, para dejarla otra vez en ${formatQ(stats.fondoInicial || 105)}.
+          Eso no cambia cuánto depositas: solo acomoda los billetes.
+        </div>` : ''}
       ${!hasFondo ? `
         <div class="card mt-16">
           <b>Aún no se ha registrado el fondo inicial de hoy.</b>

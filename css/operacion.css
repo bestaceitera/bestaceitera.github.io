@@ -287,3 +287,16 @@
 tr.fila-total td { border-top: 2px solid var(--text-muted); font-weight: 700; background: var(--bg); }
 tr.fila-pct td { color: var(--text-muted); font-size: 12.5px; background: var(--bg); }
 tr.fila-comision td { font-weight: 700; background: var(--success-light); color: #14622f; }
+
+/* Explicación del vuelto en Caja. Va con el color del aviso "devolver a caja
+   chica" del cierre, para que se lea como la misma idea en las dos pantallas. */
+.nota-vueltos {
+  background: var(--info-light);
+  border: 1px solid var(--info);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius);
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--primary-dark);
+}
