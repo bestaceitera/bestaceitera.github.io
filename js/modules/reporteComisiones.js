@@ -4,7 +4,7 @@ import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindR
 import { formatQ, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { repartirEntre } from './comisionCore.js';
-import { porRango } from './reporteCore.js';
+import { porRango, avisoDeTope } from './reporteCore.js';
 
 async function renderComisiones(el) {
   let preset = 'mes';
@@ -84,6 +84,7 @@ async function renderComisiones(el) {
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
+      ${avisoDeTope(sales, orders, invMovs)}
       <p class="text-muted mt-16" style="margin-bottom:8px">Período: <b>${range.from}</b> a <b>${range.to}</b></p>
       <div class="grid grid-4">
         <div class="stat-card"><div class="label">Total vendido</div><div class="value">${formatQ(totalNegocio)}</div>

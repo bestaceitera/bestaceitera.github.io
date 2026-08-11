@@ -3,6 +3,7 @@
 // No usa la fábrica de catálogos simples (marcas, categorías) porque aquí no
 // basta el nombre: un negocio puede tener dos cuentas en el mismo banco, y al
 // cobrar una transferencia hay que saber a CUÁL entró el dinero.
+import { catalogo } from './catalogos.js';
 import { getAll, addRecord, updateRecord, removeRecord } from '../data.js';
 import { renderTable, openModal, closeModal, toast, confirmDialog, formValues } from '../ui.js';
 import { escapeHtml } from '../utils.js';
@@ -24,7 +25,7 @@ export function etiquetaBanco(b) {
  */
 export async function listarBancos() {
   try {
-    const bancos = await getAll('banks', { order: 'nombre' });
+    const bancos = await catalogo('banks', { order: 'nombre' });
     return bancos.filter((b) => b.activo !== false);
   } catch (err) {
     console.warn('No se pudo leer el catálogo de bancos:', err.code || err.message);

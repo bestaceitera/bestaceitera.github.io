@@ -9,7 +9,7 @@ import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindR
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { cuadrarPorDia } from './cuadreCore.js';
-import { porRango } from './reporteCore.js';
+import { porRango, avisoDeTope } from './reporteCore.js';
 
 let presetComp = 'mes';
 let soloPendientes = false;
@@ -28,6 +28,7 @@ async function renderComprobantes(el) {
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}</div>
+      ${avisoDeTope(depositos)}
       <div class="grid grid-3 mt-16">
         <div class="stat-card"><div class="label">Depósitos del período</div><div class="value">${depositos.length}</div>
           <div class="sub">${formatQ(round2(depositos.reduce((s, d) => s + (Number(d.monto) || 0), 0)))}</div></div>
@@ -156,6 +157,7 @@ async function renderBancos(el) {
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}<div class="spacer"></div>${exportButtonsHtml()}</div>
+      ${avisoDeTope(ventas, ordenes, depositos)}
       <div class="grid grid-3 mt-16">
         <div class="stat-card" style="border-color:var(--primary);background:var(--primary-light)">
           <div class="label">Recibido por transferencia</div><div class="value">${formatQ(totalRecibido)}</div>
@@ -206,8 +208,10 @@ async function renderUsoPropio(el) {
 
   async function draw() {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const movs = (await porRango('inventoryMovements', range, { max: 3000 }))
-      .filter((m) => m.motivo === 'uso propio');
+    // Se guarda la lista COMPLETA aparte: filtrar crea un arreglo nuevo y se
+    // perdería la marca de "no cupo todo" que trae el original.
+    const todosLosMovs = await porRango('inventoryMovements', range, { max: 3000 });
+    const movs = todosLosMovs.filter((m) => m.motivo === 'uso propio');
 
     const costoDe = (m) => round2((Number(m.costoUnitario) || 0) * (Number(m.cantidad) || 0));
     const totalUnidades = movs.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
@@ -244,6 +248,7 @@ async function renderUsoPropio(el) {
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}<div class="spacer"></div>${exportButtonsHtml()}</div>
+      ${avisoDeTope(todosLosMovs)}
       <div class="grid grid-3 mt-16">
         <div class="stat-card"><div class="label">Unidades que salieron</div><div class="value">${totalUnidades}</div>
           <div class="sub">${movs.length === 1 ? '1 salida registrada' : `${movs.length} salidas registradas`}</div></div>
@@ -315,6 +320,7 @@ async function renderCaja(el) {
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}<div class="spacer"></div>${exportButtonsHtml()}</div>
+      ${avisoDeTope(movimientos, deposits)}
       <div class="grid grid-3 mt-16">
         <div class="stat-card"><div class="label">Entró en efectivo</div><div class="value">${formatQ(totalVendido)}</div></div>
         <div class="stat-card"><div class="label">Ya depositado</div><div class="value">${formatQ(totalDepositado)}</div></div>

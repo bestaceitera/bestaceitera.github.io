@@ -9,7 +9,7 @@ import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControl
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { repartirEntre } from './comisionCore.js';
-import { porRango } from './reporteCore.js';
+import { porRango, avisoDeTope } from './reporteCore.js';
 
 /**
  * Arma la matriz día × empleado.
@@ -157,6 +157,7 @@ async function renderDiario(el) {
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}</div>
+      ${avisoDeTope(ventas, ordenes)}
       <p class="text-muted" style="margin:12px 0 0">Período: <b>${escapeHtml(range.from)}</b> a <b>${escapeHtml(range.to)}</b></p>
 
       <div class="section-title">Qué vendió cada quien, día por día</div>

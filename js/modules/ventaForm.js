@@ -2,7 +2,8 @@
 // sistema (buscador de productos, carrito, empleados, formas de pago, banco) y
 // tenía a ventas.js pasado de tamaño. No depende de la pantalla: recibe lo que
 // necesita y avisa por `onSaved` cuando termina.
-import { getAll, getById, addRecord, nextFolio } from '../data.js';
+import { getById, addRecord, nextFolio } from '../data.js';
+import { catalogo } from './catalogos.js';
 import { applyStockChange } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { listarBancos, etiquetaBanco } from './bancos.js';
@@ -12,10 +13,12 @@ import { getCurrentUser } from '../auth.js';
 import { CONSUMIDOR_FINAL } from './clientes.js';
 
 export async function openSaleForm({ onSaved } = {}) {
+  // Desde memoria: estos cuatro casi nunca cambian y antes se volvían a
+  // descargar en cada "Nueva venta". Se mantienen al día solos (ver catalogos.js).
   const [products, customers, users, bancos] = await Promise.all([
-    getAll('products', { order: 'nombre' }),
-    getAll('customers', { order: 'nombre' }),
-    getAll('users', { order: 'nombre' }),
+    catalogo('products', { order: 'nombre' }),
+    catalogo('customers', { order: 'nombre' }),
+    catalogo('users', { order: 'nombre' }),
     listarBancos(),
   ]);
   // Aunque no haya productos en el catálogo se puede vender: existen los artículos sueltos.

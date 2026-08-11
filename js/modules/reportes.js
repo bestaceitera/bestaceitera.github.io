@@ -5,7 +5,7 @@ import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
 import { renderComisiones } from './reporteComisiones.js';
 import { renderDiario } from './reporteDiario.js';
-import { porRango } from './reporteCore.js';
+import { porRango, avisoDeTope } from './reporteCore.js';
 
 async function render(container) {
   container.innerHTML = `
@@ -94,6 +94,7 @@ async function render(container) {
       const cols = [{ key: 'numero', label: 'No.' }, { key: 'fecha', label: 'Fecha' }, { key: 'cliente', label: 'Cliente' }, { key: 'formaPago', label: 'Pago' }, { key: 'total', label: 'Total' }, { key: 'usuario', label: 'Realizada por' }];
       el.innerHTML = `
         <div class="toolbar">${dateRangePresetButtons()}<div class="spacer"></div>${exportButtonsHtml()}</div>
+        ${avisoDeTope(ventas)}
         <div class="stat-card mt-16" style="max-width:260px"><div class="label">Total del período</div><div class="value">${formatQ(totalQ)}</div></div>
         <div class="card mt-16"><div id="rep-ventas-table"></div></div>
       `;

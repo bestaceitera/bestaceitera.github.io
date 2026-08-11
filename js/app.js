@@ -1,6 +1,7 @@
 import { isConfigured } from './firebase-config.js';
 import { login, logout, onAuthChange, friendlyAuthError, changeOwnPassword } from './auth.js';
 import { registerRoute, initRouter, stopRouter } from './router.js';
+import { soltarCatalogos } from './modules/catalogos.js';
 import { toast, openModal, closeModal, formValues } from './ui.js';
 import { getAll, addRecord } from './data.js';
 import { escapeHtml } from './utils.js';
@@ -70,6 +71,7 @@ async function seedIfEmpty() {
 
 function showLoginView() {
   stopRouter(); // suelta las escuchas en vivo antes de quedarse sin sesión
+  soltarCatalogos();
   document.getElementById('login-view').hidden = false;
   document.getElementById('app-view').hidden = true;
 }
@@ -93,6 +95,7 @@ function bindChrome() {
   });
   document.getElementById('btn-logout')?.addEventListener('click', async () => {
     stopRouter(); // primero se sueltan las escuchas, luego se cierra la sesión
+    soltarCatalogos();
     await logout();
     showLoginView();
   });
@@ -193,7 +196,40 @@ function vigilarConexion() {
   pintar();
 }
 
+/**
+ * Red de seguridad para lo que nadie previó.
+ *
+ * Cada pantalla ya atrapa sus propios errores, pero si alguno se escapa —una
+ * cuota de Firebase agotada, un dato con una forma imposible, un fallo del
+ * navegador— sin esto el programa se queda mudo: la pantalla a medias y el
+ * usuario esperando algo que nunca llega. Eso es lo peor que puede pasarle a
+ * quien está atendiendo con un cliente enfrente.
+ *
+ * No arregla el error: lo hace VISIBLE y dice qué hacer. Un mensaje molesto es
+ * mejor que un programa que parece colgado.
+ */
+function redDeSeguridad() {
+  let ultimoAviso = 0;
+  const avisar = (detalle) => {
+    // Un fallo suele disparar varios eventos seguidos; no se llena la pantalla
+    // de avisos repetidos por el mismo problema.
+    const ahora = Date.now();
+    if (ahora - ultimoAviso < 8000) return;
+    ultimoAviso = ahora;
+    toast('Algo falló y esta pantalla puede estar incompleta. Vuelve a entrar a la sección; '
+      + 'si sigue igual, recarga la página. Lo que ya guardaste está a salvo.', 'danger', 12000);
+    console.error('Error no controlado:', detalle);
+  };
+  window.addEventListener('error', (e) => {
+    // Las imágenes rotas también disparan 'error' y no son un fallo del programa.
+    if (e.target && e.target !== window) return;
+    avisar(e.message || e.error);
+  }, true);
+  window.addEventListener('unhandledrejection', (e) => avisar(e.reason?.message || e.reason));
+}
+
 // app.js es un módulo (carga diferida): el DOM ya está listo cuando esto se ejecuta,
 // así que no hace falta (ni conviene) esperar 'DOMContentLoaded' aquí.
+redDeSeguridad();
 vigilarConexion();
 init();
