@@ -5,20 +5,11 @@
 //
 // El período elegido se guarda a nivel de módulo, así que al volver a Reportes
 // sigue puesto el mismo — igual que en Ventas o Inventario.
-import { getByDateRange } from '../data.js';
 import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { cuadrarPorDia } from './cuadreCore.js';
-
-/** Trae solo los registros del período pedido. Se apoya en la consulta por rango
- *  de data.js para no repetir aquí la misma construcción de filtros. */
-async function porRango(coleccion, rango, { max = 5000 } = {}) {
-  // El tope va explícito: los reportes miran períodos largos, así que necesitan
-  // un margen mayor que el de las pantallas de operación.
-  const { filas } = await getByDateRange(coleccion, rango, { max });
-  return filas;
-}
+import { porRango } from './reporteCore.js';
 
 let presetComp = 'mes';
 let soloPendientes = false;

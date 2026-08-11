@@ -5,16 +5,11 @@
 // comisiones (`repartirEntre`): si dos pantallas repartieran distinto, los dos
 // reportes darían cifras diferentes para la misma venta y no habría forma de
 // saber cuál creer. Por eso la función vive en un solo lugar y las dos la usan.
-import { getByDateRange } from '../data.js';
 import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { repartirEntre } from './comisionCore.js';
-
-async function porRango(coleccion, rango, { max = 5000 } = {}) {
-  const { filas } = await getByDateRange(coleccion, rango, { max });
-  return filas;
-}
+import { porRango } from './reporteCore.js';
 
 /**
  * Arma la matriz día × empleado.

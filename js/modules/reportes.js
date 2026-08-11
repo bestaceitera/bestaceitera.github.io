@@ -1,22 +1,11 @@
-import { getAll, getByDateRange } from '../data.js';
+import { getAll } from '../data.js';
 import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2 } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
 import { renderComisiones } from './reporteComisiones.js';
 import { renderDiario } from './reporteDiario.js';
-
-/**
- * Trae de la base SOLO los registros del período pedido, en vez de descargar la
- * colección entera y filtrar aquí. Es lo que mantiene los reportes rápidos y
- * baratos aunque con los años haya decenas de miles de ventas guardadas.
- */
-async function porRango(coleccion, rango, { max = 5000 } = {}) {
-  // El tope va explícito: los reportes miran períodos largos, así que necesitan
-  // un margen mayor que el de las pantallas de operación.
-  const { filas } = await getByDateRange(coleccion, rango, { max });
-  return filas;
-}
+import { porRango } from './reporteCore.js';
 
 async function render(container) {
   container.innerHTML = `

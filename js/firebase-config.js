@@ -23,7 +23,8 @@ const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${SDK
 const authMod = await import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-auth.js`);
 const fsMod = await import(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-firestore.js`);
 
-export const app = initializeApp(firebaseConfig);
+// No se exporta: solo lo usan getAuth() e initializeFirestore() aquí abajo.
+const app = initializeApp(firebaseConfig);
 export const auth = authMod.getAuth(app);
 
 /**

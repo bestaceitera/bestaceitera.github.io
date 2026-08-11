@@ -1,16 +1,10 @@
 // Reporte de comisiones. Se separó de los otros reportes de dinero solo por
 // tamaño: la lógica de reparto entre varios empleados ocupa lo suyo.
-import { getByDateRange } from '../data.js';
 import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { repartirEntre } from './comisionCore.js';
-
-/** Trae solo los registros del período pedido. */
-async function porRango(coleccion, rango, { max = 5000 } = {}) {
-  const { filas } = await getByDateRange(coleccion, rango, { max });
-  return filas;
-}
+import { porRango } from './reporteCore.js';
 
 async function renderComisiones(el) {
   let preset = 'mes';

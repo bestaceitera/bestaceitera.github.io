@@ -112,8 +112,17 @@ async function dibujarRuta(miToken, { silencioso = false } = {}) {
   // Si mientras esperaba turno se pidió otro dibujo, este ya no sirve.
   if (miToken !== tokenRender) return;
 
-  const hash = (location.hash || '#dashboard').slice(1);
-  const route = routes.get(hash) || routes.get('dashboard');
+  const hash = (location.hash || '').replace(/^#/, '');
+  let route = routes.get(hash);
+  // Hash vacío, mal escrito o de una versión anterior. Antes se dibujaba el
+  // dashboard pero la barra de direcciones seguía diciendo la otra sección: se
+  // veía una pantalla y la URL decía otra, y al recargar se caía aquí de nuevo.
+  // Ahora se corrige la URL; ese mismo cambio vuelve a entrar con la ruta buena.
+  if (!route) {
+    if (routes.has('dashboard') && location.hash !== '#dashboard') { location.hash = '#dashboard'; return; }
+    route = routes.get('dashboard');
+    if (!route) return;
+  }
   if (!route.roles.includes(currentProfile.role)) {
     toast('No tienes permiso para ver esa sección.', 'danger');
     location.hash = '#dashboard';

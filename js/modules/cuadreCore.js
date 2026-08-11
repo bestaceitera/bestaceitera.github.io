@@ -9,7 +9,7 @@ import { round2 } from '../utils.js';
  * Cuánto efectivo se queda en el negocio como caja chica cuando ese día no se
  * registró un fondo inicial. Si sí se registró, manda el monto real de ese día.
  */
-export const CAJA_CHICA_POR_DEFECTO = 105;
+const CAJA_CHICA_POR_DEFECTO = 105;
 
 /**
  * Resume los movimientos de UN día.

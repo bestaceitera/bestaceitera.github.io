@@ -1,8 +1,8 @@
 import { getAll, countRecords } from '../data.js';
-import { formatQ, todayISO, round2 } from '../utils.js';
+import { formatQ, todayISO, round2, escapeHtml } from '../utils.js';
 import { barChart, lineChart } from '../charts.js';
 import { stockBajoHtml, productosBajoMinimo } from './stockBajo.js';
-import { escapeHtml } from '../utils.js';
+import { computeExpected } from './cuadreCore.js';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
@@ -47,11 +47,15 @@ async function render(container, profile) {
   // Mismo criterio que el panel de abajo, para que el número y la lista no se contradigan.
   const lowStock = productosBajoMinimo(products);
 
-  const movementsToday = cashMovementsToday.filter((m) => m.fecha === today);
-  const fondoInicial = movementsToday.filter((m) => m.categoria === 'fondo_inicial').reduce((s, m) => s + m.monto, 0);
-  const entradas = movementsToday.filter((m) => m.tipo === 'entrada' && m.categoria !== 'fondo_inicial').reduce((s, m) => s + m.monto, 0);
-  const salidas = movementsToday.filter((m) => m.tipo === 'salida').reduce((s, m) => s + m.monto, 0);
-  const efectivoEsperado = round2(fondoInicial + entradas - salidas);
+  // El efectivo se calcula con la misma función que usa Caja, no con una cuenta
+  // aparte. Antes el dashboard sumaba por su cuenta y no descontaba los vueltos:
+  // el total coincidía de casualidad (el vuelto se cancela solo), pero cualquier
+  // cambio en una de las dos cuentas habría hecho que el dashboard y Caja
+  // dijeran cifras distintas del mismo dinero.
+  //
+  // La consulta ya viene filtrada por la fecha de hoy desde el servidor, así que
+  // no hace falta volver a filtrarla aquí.
+  const { esperado: efectivoEsperado } = computeExpected(cashMovementsToday);
 
   const ultimosDepositos = deposits.slice(0, 5);
 

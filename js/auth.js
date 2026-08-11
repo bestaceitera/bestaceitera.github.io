@@ -91,10 +91,6 @@ export async function changeOwnPassword(currentPassword, newPassword) {
   await updatePassword(user, newPassword);
 }
 
-export function isAdmin() {
-  return currentProfile?.role === 'admin';
-}
-
 export function friendlyAuthError(err) {
   const code = err?.code || '';
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
