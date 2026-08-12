@@ -21,15 +21,8 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
   // monto fijo que vive aparte, no se deposita y no se cuenta aquí.
   const esperado = dia?.efectivoVentas ?? 0;
 
-  // Cuánto hay que devolver a la caja chica y de dónde sale ese número: se arma
-  // aquí para poder mostrarlo desglosado ("Q100 de vueltos + Q35 de gastos") y
-  // que nadie tenga que adivinar por qué la caja chica quedó corta.
-  const reponer = dia?.reponerCajaChica ?? 0;
-  const detalleReponer = [
-    [dia?.vueltos ?? 0, 'de vueltos'],
-    [dia?.gastos ?? 0, 'de gastos'],
-    [dia?.compras ?? 0, 'de compras'],
-  ].filter(([monto]) => monto > 0).map(([monto, texto]) => `${formatQ(monto)} ${texto}`).join(' + ');
+  const cajaChica = dia?.cajaChica ?? 0;
+  const enElCajon = dia?.enElCajon ?? round2(cajaChica + esperado);
 
   if (cierre) {
     openModal(`Día cerrado — ${formatDateLong(fecha)}`, `
@@ -110,26 +103,26 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
       </p>
     </div>
 
-    <!-- Los dos únicos números que hay que hacer con las manos: cuánto vuelve a
-         la caja chica y cuánto se lleva al banco. Todo lo que se pagó en efectivo
-         durante el día salió de la caja chica, así que se repone de lo que entró. -->
-    ${reponer > 0 ? `
-      <div class="devolver-caja-chica">
-        <span>Devolver a caja chica <span class="text-muted">— ${detalleReponer}</span></span>
-        <b>${formatQ(reponer)}</b>
-      </div>` : ''}
+    <!-- Las dos únicas cosas que hay que hacer con las manos: apartar la caja
+         chica y depositar el resto. Antes aquí decía "devolver a caja chica
+         Q128" suponiendo que el cambio salía de esos billetes; con Q105 de caja
+         chica eso era imposible y solo confundía. De qué pila salió cada billete
+         da igual: al final se aparta lo de mañana y lo demás va al banco. -->
+    <div class="devolver-caja-chica">
+      <span>Aparta para mañana <span class="text-muted">— la caja chica</span></span>
+      <b>${formatQ(cajaChica)}</b>
+    </div>
 
     <div class="depositar-banco">
       <span>Depositar a banco</span>
       <b>${formatQ(dia?.aDepositar ?? 0)}</b>
     </div>
 
-    ${reponer > 0 ? `
-      <p class="text-muted" style="font-size:12.5px;margin:-4px 0 14px">
-        De los <b>${formatQ(round2((dia?.ventas ?? 0) + (dia?.servicios ?? 0) + (dia?.otrosIngresos ?? 0)))}</b>
-        que recibiste: ${formatQ(reponer)} vuelven a la caja chica (para dejarla otra vez
-        en ${formatQ(dia?.cajaChica ?? 0)}) y ${formatQ(dia?.aDepositar ?? 0)} van al banco.
-      </p>` : ''}
+    <p class="text-muted" style="font-size:12.5px;margin:-4px 0 14px">
+      En el cajón debería haber <b>${formatQ(enElCajon)}</b> en total
+      (${formatQ(cajaChica)} de caja chica + ${formatQ(esperado)} de las ventas).
+      Cuéntalo todo, aparta ${formatQ(cajaChica)} y escribe abajo lo que quedó.
+    </p>
     <label>¿Cuánto contaste de las ventas? (Q)
       <input type="number" id="cd-contado" min="0" step="0.01" placeholder="0.00">
     </label>
@@ -176,7 +169,6 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
         cajaChica: dia?.cajaChica ?? 0, ventas: dia?.ventas ?? 0, servicios: dia?.servicios ?? 0,
         gastos: dia?.gastos ?? 0, compras: dia?.compras ?? 0, retiros: dia?.retiros ?? 0,
         depositos: dia?.depositos ?? 0, vueltos: dia?.vueltos ?? 0,
-        reponerCajaChica: reponer,
         observaciones: $('cd-obs').value.trim(),
         // Cuántas veces se había cerrado antes: deja ver de un vistazo si un día
         // costó cuadrar, sin tener que ir a buscar los cierres anulados.

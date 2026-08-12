@@ -2,7 +2,8 @@ import { getAll, getByDateRange, updateRecord, removeRecord, adjustStockAtomic }
 import { openUsoPropioForm } from './usoPropio.js';
 import { openSaleForm } from './ventaForm.js';
 import { listarBancos } from './bancos.js';
-import { cuadrePorFecha } from './cuadreCore.js';
+import { cuadrarPorDia, cuadrePorFecha } from './cuadreCore.js';
+import { pendienteDeDepositar } from './pendienteCore.js';
 import { abrirCierreDia, abrirDepositoDia, abrirDepositosDelDia } from './cierreDia.js';
 import { openModal, closeModal, toast, confirmDialog, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
@@ -35,6 +36,10 @@ async function render(container, profile) {
   // Los depósitos ya hechos de cada día, con su foto, para poder revisar la
   // boleta aquí mismo en vez de ir a buscarla a Depósitos bancarios.
   let depositosPorDia = new Map();
+  // Dinero de TODOS los días que todavía no ha llegado al banco. Se calcula
+  // aparte del período que se esté viendo: el pendiente no desaparece porque el
+  // filtro diga "hoy".
+  let pendiente = { desde: null, dias: [], total: 0 };
   let busqueda = '';
   let pagina = 1;
   let rango = rangoGuardado || applyRangePreset('mes');
@@ -66,13 +71,25 @@ async function render(container, profile) {
     cargando = true;
     pintar();
     try {
-      const [r, movimientos, closings, depos] = await Promise.all([
+      // El pendiente de depositar mira los últimos meses, no el período elegido:
+      // dinero sin depositar de hace más de medio año sería un problema mucho
+      // mayor que un reporte, y el tope evita descargar el historial completo.
+      const desdeAmplio = new Date();
+      desdeAmplio.setDate(desdeAmplio.getDate() - 180);
+      const rangoAmplio = { from: desdeAmplio.toISOString().slice(0, 10), to: '2100-01-01' };
+
+      const [r, movimientos, closings, depos, movsAmplio, cierresAmplio] = await Promise.all([
         getByDateRange('sales', rango, { max: 1500 }),
         getByDateRange('cashMovements', rango, { max: 4000 }),
         getByDateRange('cashClosings', rango, { max: 500 }),
         getByDateRange('deposits', rango, { max: 500 }),
+        getByDateRange('cashMovements', rangoAmplio, { max: 6000 }),
+        getByDateRange('cashClosings', rangoAmplio, { max: 800 }),
       ]);
       if (mio !== peticion) return;
+      pendiente = pendienteDeDepositar(cuadrarPorDia(movsAmplio.filas), {
+        cerrados: new Set(cierresAmplio.filas.filter((c) => !c.anulado).map((c) => c.fecha)),
+      });
       depositosPorDia = new Map();
       depos.filas.forEach((d) => {
         if (!depositosPorDia.has(d.fecha)) depositosPorDia.set(d.fecha, []);
@@ -95,6 +112,7 @@ async function render(container, profile) {
       cierres = new Map();
       anulados = new Map();
       depositosPorDia = new Map();
+      pendiente = { desde: null, dias: [], total: 0 };
       toast('No se pudieron cargar las ventas: ' + err.message, 'danger', 6000);
     } finally {
       if (mio === peticion) { cargando = false; pintar(); }
@@ -179,8 +197,8 @@ async function render(container, profile) {
     return `<div class="dia-estado">
       <span class="text-muted" title="Solo el dinero de las ventas en efectivo. Las transferencias y la caja chica no entran aquí.">
         Efectivo de las ventas ${formatQ(dia.efectivoVentas)}</span>
-      ${dia.reponerCajaChica > 0 ? `<span class="chip-vueltos" title="Vueltos, gastos y compras pagados en efectivo salieron de la caja chica: hay que reponerlos del dinero que entró">
-        ↩ devolver a caja chica ${formatQ(dia.reponerCajaChica)}</span>` : ''}
+      <span class="chip-vueltos" title="Lo que debería haber físicamente en el cajón: la caja chica más el dinero de las ventas">
+        🧮 en el cajón ${formatQ(dia.enElCajon)}</span>
       ${reaperturas > 0 ? `<span class="chip-reabierto" title="Este día se cerró y se volvió a abrir">↻ reabierto ${reaperturas > 1 ? reaperturas + ' veces' : ''}</span>` : ''}
       <span class="spacer"></span>
       ${verDepositos}
@@ -207,7 +225,22 @@ async function render(container, profile) {
 
     const totalPeriodo = round2(filtradas.reduce((s, v) => s + Number(v.total || 0), 0));
     const esTodo = rango.from === '2000-01-01';
-    card.querySelector('#v-resumen').innerHTML = (filtradas.length ? `
+    // Aviso permanente del dinero que todavía no ha llegado al banco, de TODOS
+    // los días. Es lo que faltaba: el cierre compara un día contra sí mismo y
+    // nunca preguntaba si lo de ayer llegó. Un depósito registrado de menos
+    // podía quedarse escondido semanas.
+    const avisoPendiente = pendiente.total > 0.009 ? `
+      <div class="pendiente-banco">
+        <div class="pendiente-cifra">
+          <span>Pendiente de llevar al banco</span>
+          <b>${formatQ(pendiente.total)}</b>
+        </div>
+        <div class="pendiente-dias">
+          ${pendiente.dias.map((d) => `<span${d.fecha === todayISO() ? ' class="hoy"' : ''}>${escapeHtml(formatDateLong(d.fecha))}: <b>${formatQ(d.aDepositar)}</b></span>`).join('')}
+        </div>
+      </div>` : '';
+
+    card.querySelector('#v-resumen').innerHTML = avisoPendiente + (filtradas.length ? `
       <div class="periodo-resumen">
         <span>${esTodo ? 'Todas las ventas' : `Del ${escapeHtml(rango.from)} al ${escapeHtml(rango.to)}`}</span>
         <span>${filtradas.length} venta${filtradas.length === 1 ? '' : 's'} en ${dias.length} día${dias.length === 1 ? '' : 's'}

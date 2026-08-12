@@ -203,8 +203,11 @@
   color: var(--text-muted);
 }
 
-/* Cuanto hay que devolver a la caja chica: son los vueltos que se dieron con su
-   dinero, y hay que reponerlos antes de llevar el resto al banco. */
+/* Lo que hay que apartar para la caja chica de mañana, en el cuadro de cerrar.
+   Antes aquí decía "devolver a caja chica" con la suma de vueltos y gastos,
+   suponiendo que todo el cambio salía de esos billetes; con Q105 de caja chica
+   y Q128 de vueltos eso era imposible. Ahora dice lo único que siempre es
+   cierto: aparta esto, deposita el resto. */
 .devolver-caja-chica {
   display: flex;
   align-items: center;
@@ -300,3 +303,24 @@ tr.fila-comision td { font-weight: 700; background: var(--success-light); color:
   line-height: 1.55;
   color: var(--primary-dark);
 }
+
+/* Dinero que todavía no ha llegado al banco, sumando todos los días. Va arriba
+   del todo en Ventas y en ámbar: mientras no diga cero, algo falta depositar. */
+.pendiente-banco {
+  background: var(--gold-light);
+  border: 1px solid var(--gold);
+  border-left: 4px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 11px 14px;
+  margin-bottom: 14px;
+}
+.pendiente-cifra {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; font-size: 14px; color: #7a5c00;
+}
+.pendiente-cifra b { font-size: 21px; }
+.pendiente-dias {
+  display: flex; flex-wrap: wrap; gap: 6px 14px;
+  margin-top: 7px; font-size: 12.5px; color: #7a5c00; opacity: .9;
+}
+.pendiente-dias .hoy { font-weight: 700; opacity: 1; }
