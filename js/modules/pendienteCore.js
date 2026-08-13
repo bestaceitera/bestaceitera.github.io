@@ -9,7 +9,7 @@
 //
 // Con esto el dinero pendiente se arrastra de un día a otro y está siempre a la
 // vista: si no baja a cero, se nota.
-import { round2 } from '../utils.js';
+import { round2, formatQ, escapeHtml, formatDateLong, todayISO } from '../utils.js';
 
 /**
  * Días que todavía deben dinero al banco, y el total.
@@ -33,4 +33,22 @@ export function pendienteDeDepositar(dias, { cerrados = new Set() } = {}) {
     dias: deben.sort((a, b) => (a.fecha < b.fecha ? -1 : 1)),
     total: round2(deben.reduce((s, d) => s + d.aDepositar, 0)),
   };
+}
+
+/**
+ * El aviso que se muestra arriba en Ventas. Vive aquí, junto al cálculo, para
+ * que quien cambie uno vea el otro.
+ */
+export function avisoPendienteHtml(pendiente) {
+  if (!pendiente || pendiente.total <= 0.009) return '';
+  return `
+    <div class="pendiente-banco">
+      <div class="pendiente-cifra">
+        <span>Pendiente de llevar al banco</span>
+        <b>${formatQ(pendiente.total)}</b>
+      </div>
+      <div class="pendiente-dias">
+        ${pendiente.dias.map((d) => `<span${d.fecha === todayISO() ? ' class="hoy"' : ''}>${escapeHtml(formatDateLong(d.fecha))}: <b>${formatQ(d.aDepositar)}</b></span>`).join('')}
+      </div>
+    </div>`;
 }

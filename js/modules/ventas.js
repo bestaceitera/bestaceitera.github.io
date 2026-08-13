@@ -3,7 +3,7 @@ import { openUsoPropioForm } from './usoPropio.js';
 import { openSaleForm } from './ventaForm.js';
 import { listarBancos } from './bancos.js';
 import { cuadrarPorDia, cuadrePorFecha } from './cuadreCore.js';
-import { pendienteDeDepositar } from './pendienteCore.js';
+import { pendienteDeDepositar, avisoPendienteHtml } from './pendienteCore.js';
 import { tieneBoleta } from './boletas.js';
 import { abrirCierreDia, abrirDepositoDia, abrirDepositosDelDia } from './cierreDia.js';
 import { openModal, closeModal, toast, confirmDialog, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
@@ -255,22 +255,7 @@ async function render(container, profile) {
 
     const totalPeriodo = round2(filtradas.reduce((s, v) => s + Number(v.total || 0), 0));
     const esTodo = rango.from === '2000-01-01';
-    // Aviso permanente del dinero que todavía no ha llegado al banco, de TODOS
-    // los días. Es lo que faltaba: el cierre compara un día contra sí mismo y
-    // nunca preguntaba si lo de ayer llegó. Un depósito registrado de menos
-    // podía quedarse escondido semanas.
-    const avisoPendiente = pendiente.total > 0.009 ? `
-      <div class="pendiente-banco">
-        <div class="pendiente-cifra">
-          <span>Pendiente de llevar al banco</span>
-          <b>${formatQ(pendiente.total)}</b>
-        </div>
-        <div class="pendiente-dias">
-          ${pendiente.dias.map((d) => `<span${d.fecha === todayISO() ? ' class="hoy"' : ''}>${escapeHtml(formatDateLong(d.fecha))}: <b>${formatQ(d.aDepositar)}</b></span>`).join('')}
-        </div>
-      </div>` : '';
-
-    card.querySelector('#v-resumen').innerHTML = avisoPendiente + (filtradas.length ? `
+    card.querySelector('#v-resumen').innerHTML = avisoPendienteHtml(pendiente) + (filtradas.length ? `
       <div class="periodo-resumen">
         <span>${esTodo ? 'Todas las ventas' : `Del ${escapeHtml(rango.from)} al ${escapeHtml(rango.to)}`}</span>
         <span>${filtradas.length} venta${filtradas.length === 1 ? '' : 's'} en ${dias.length} día${dias.length === 1 ? '' : 's'}
