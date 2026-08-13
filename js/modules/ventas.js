@@ -272,9 +272,13 @@ async function render(container, profile) {
         <div class="dia-header">
           <span class="dia-fecha">${escapeHtml(formatDateLong(d.fecha))}</span>
           <span class="dia-resumen">${d.ventas.length} venta${d.ventas.length === 1 ? '' : 's'} · <b>${formatQ(d.total)}</b>${
+            // El desglose se muestra SIEMPRE, aunque no haya nada en banco. Antes se
+            // escondía cuando todo era efectivo, y entonces la ausencia de la línea se
+            // leía como "se rompió" en vez de "no hubo transferencias". Un renglón que
+            // desaparece sin explicación cuesta más que uno que se repite.
             d.noEfectivo > 0
               ? `<br><span class="dia-desglose">${formatQ(d.efectivo)} en efectivo + ${formatQ(d.noEfectivo)} a banco</span>`
-              : ''}</span>
+              : '<br><span class="dia-desglose">todo en efectivo</span>'}</span>
         </div>
         ${estadoDelDia(d.fecha)}
         <div class="table-wrap"><table>
