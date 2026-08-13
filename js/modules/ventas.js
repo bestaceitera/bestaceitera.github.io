@@ -198,8 +198,6 @@ async function render(container, profile) {
     return `<div class="dia-estado">
       <span class="text-muted" title="Solo el dinero de las ventas en efectivo. Las transferencias y la caja chica no entran aquí.">
         Efectivo de las ventas ${formatQ(dia.efectivoVentas)}</span>
-      <span class="chip-vueltos" title="Lo que debería haber físicamente en el cajón: la caja chica más el dinero de las ventas">
-        🧮 en el cajón ${formatQ(dia.enElCajon)}</span>
       ${reaperturas > 0 ? `<span class="chip-reabierto" title="Este día se cerró y se volvió a abrir">↻ reabierto ${reaperturas > 1 ? reaperturas + ' veces' : ''}</span>` : ''}
       <span class="spacer"></span>
       ${verDepositos}

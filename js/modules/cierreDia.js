@@ -23,7 +23,6 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
   const esperado = dia?.efectivoVentas ?? 0;
 
   const cajaChica = dia?.cajaChica ?? 0;
-  const enElCajon = dia?.enElCajon ?? round2(cajaChica + esperado);
 
   if (cierre) {
     openModal(`Día cerrado — ${formatDateLong(fecha)}`, `
@@ -119,11 +118,6 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
       <b>${formatQ(dia?.aDepositar ?? 0)}</b>
     </div>
 
-    <p class="text-muted" style="font-size:12.5px;margin:-4px 0 14px">
-      En el cajón debería haber <b>${formatQ(enElCajon)}</b> en total
-      (${formatQ(cajaChica)} de caja chica + ${formatQ(esperado)} de las ventas).
-      Cuéntalo todo, aparta ${formatQ(cajaChica)} y escribe abajo lo que quedó.
-    </p>
     <label>¿Cuánto contaste de las ventas? (Q)
       <input type="number" id="cd-contado" min="0" step="0.01" placeholder="0.00">
     </label>

@@ -75,21 +75,9 @@ export function cuadrarPorDia(movimientos, { cajaChicaPorDefecto = CAJA_CHICA_PO
       // Solo el dinero de las ventas del día: es lo que se cuenta al cerrar y lo
       // que se lleva al banco. La caja chica queda fuera de esta cuenta.
       const efectivoVentas = round2(stats.totalEntradas - stats.totalSalidas);
-      // Cuánto debería haber FÍSICAMENTE en el cajón al cerrar: la caja chica
-      // más el dinero de las ventas. Es la única verificación que sirve, porque
-      // se puede contar.
-      //
-      // Antes aquí se calculaba un "devolver a caja chica" = vueltos + gastos +
-      // compras, suponiendo que todo el cambio salía de los billetes de la caja
-      // chica. Esa suposición se rompe sola: el 12 de agosto los vueltos fueron
-      // Q128 y la caja chica era de Q105, así que era imposible que hubieran
-      // salido de ahí. El cambio se da con los billetes que va entregando el
-      // cliente. Al final del día solo hay que apartar la caja chica y depositar
-      // el resto; de qué pila salió cada billete da igual.
-      const enElCajon = round2(cajaChica + efectivoVentas);
       return {
         fecha, ...stats, tuvoFondo, cajaChica,
-        efectivoVentas, enElCajon,
+        efectivoVentas,
         depositado: stats.depositos,
         aDepositar: round2(Math.max(0, efectivoVentas)),
       };
