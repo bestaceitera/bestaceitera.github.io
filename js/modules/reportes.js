@@ -5,7 +5,7 @@ import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
 import { renderComisiones } from './reporteComisiones.js';
 import { renderDiario } from './reporteDiario.js';
-import { porRango, avisoDeTope, detalleDe } from './reporteCore.js';
+import { porRango, avisoDeTope, detalleDe, tomarTurno } from './reporteCore.js';
 import { resumenPorEmpleado } from './comisionCore.js';
 
 async function render(container) {
@@ -41,12 +41,31 @@ async function render(container) {
   setActiveTab('inventario');
 
   // ---------------- Inventario ----------------
+  let presetInv = 'anio';
+  const turnoInv = tomarTurno();
+
   async function renderInventario(el) {
+    let range = applyRangePreset(presetInv);
+    await dibujarInv(el, range);
+  }
+
+  /**
+   * El ranking de más vendidos va POR PERÍODO, no sobre todas las ventas de la
+   * historia. Antes pedía las últimas 5,000: a cinco ventas diarias eso se pasa
+   * a los tres años y medio, y a partir de ahí el ranking salía calculado sobre
+   * un pedazo de los datos SIN avisar. Un reporte equivocado que no se queja es
+   * peor que uno que no carga.
+   *
+   * El stock bajo no lleva período: habla del inventario de hoy.
+   */
+  async function dibujarInv(el, range) {
+    const mio = turnoInv.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [products, sales] = await Promise.all([
       getAll('products', { order: 'nombre' }),
-      getAll('sales', { order: 'fecha', direction: 'desc', max: 5000 }),
+      porRango('sales', range),
     ]);
+    if (!turnoInv.vigente(mio) || !el.isConnected) return;
     const soldQty = {};
     // Los artículos sueltos no tienen productoId, así que no cuentan en el ranking por producto.
     sales.forEach((s) => s.items?.forEach((i) => {
@@ -58,11 +77,14 @@ async function render(container) {
       .map((p) => ({ nombre: p.nombre, stock: p.stock, stockMinimo: p.stockMinimo }));
 
     el.innerHTML = `
-      <div class="section-title" style="margin-top:0">Más y menos vendidos</div>
+      <div class="toolbar">${dateRangePresetButtons()}</div>
+      ${avisoDeTope(sales)}
+      <div class="section-title">Más y menos vendidos <span class="text-muted" style="font-weight:400;font-size:13px">— del ${escapeHtml(range.from)} al ${escapeHtml(range.to)}</span></div>
       <div class="card"><div id="rep-inv-table"></div></div>
-      <div class="section-title">Stock bajo el mínimo</div>
+      <div class="section-title">Stock bajo el mínimo <span class="text-muted" style="font-weight:400;font-size:13px">— así está hoy</span></div>
       <div class="card"><div id="rep-inv-low"></div></div>
     `;
+    bindRangeControls(el, (r, p) => { presetInv = p; dibujarInv(el, r); }, { activo: presetInv });
     const cols1 = [{ key: 'nombre', label: 'Producto' }, { key: 'vendidos', label: 'Unidades vendidas' }, { key: 'stock', label: 'Stock actual' }];
     const t1 = renderTable({ columns: cols1, rows: ranked, pageSize: 12, emptyMessage: 'Sin datos.', extraToolbar: exportButtonsHtml() });
     el.querySelector('#rep-inv-table').innerHTML = t1.html;
@@ -84,8 +106,10 @@ async function render(container) {
     // qué período se estaba viendo ni qué se estaba exportando.
     let preset = 'mes';
     let range = applyRangePreset(preset);
+    const turno = tomarTurno();
 
     async function draw() {
+      const mio = turno.nuevo();
       el.innerHTML = '<div class="empty-state">Cargando…</div>';
       // Se incluyen también las órdenes de servicio: para el dueño "lo vendido"
       // del período es todo lo que entró, no solo el mostrador. Antes el reporte
@@ -94,7 +118,7 @@ async function render(container) {
         porRango('sales', range),
         porRango('serviceOrders', range),
       ]);
-      if (!el.isConnected) return;
+      if (!turno.vigente(mio) || !el.isConnected) return;
 
       const deVenta = (s) => ({
         numero: s.numero, fecha: s.fecha, tipo: 'Venta', cliente: s.clienteNombre || '',
@@ -240,9 +264,20 @@ async function render(container) {
   }
 
   // ---------------- Clientes ----------------
+  let presetCli = 'anio';
+  const turnoCli = tomarTurno();
+
   async function renderClientes(el) {
+    await dibujarCli(el, applyRangePreset(presetCli));
+  }
+
+  // Por período, por lo mismo que el ranking de inventario: pedir "todas las
+  // ventas" deja de funcionar callado en cuanto el negocio lleva unos años.
+  async function dibujarCli(el, range) {
+    const mio = turnoCli.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
-    const sales = await getAll('sales', { order: 'fecha', direction: 'desc', max: 5000 });
+    const sales = await porRango('sales', range);
+    if (!turnoCli.vigente(mio) || !el.isConnected) return;
     const agg = {};
     sales.filter((s) => s.clienteTipo === 'registrado').forEach((s) => {
       agg[s.clienteId] = agg[s.clienteId] || { nombre: s.clienteNombre, compras: 0, total: 0 };
@@ -251,11 +286,15 @@ async function render(container) {
     });
     const rows = Object.values(agg).sort((a, b) => b.total - a.total).map((r) => ({ nombre: r.nombre, compras: r.compras, total: formatQ(round2(r.total)) }));
     const cols = [{ key: 'nombre', label: 'Cliente' }, { key: 'compras', label: 'No. compras facturadas' }, { key: 'total', label: 'Total facturado' }];
-    el.innerHTML = `<div class="card"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-cli-table"></div></div>`;
+    el.innerHTML = `
+      <div class="toolbar">${dateRangePresetButtons()}</div>
+      ${avisoDeTope(sales)}
+      <div class="card mt-16"><div class="toolbar">${exportButtonsHtml()}</div><div id="rep-cli-table"></div></div>`;
     const t = renderTable({ columns: cols, rows, pageSize: 12, emptyMessage: 'Aún no hay ventas facturadas a clientes registrados.' });
     el.querySelector('#rep-cli-table').innerHTML = t.html;
     t.mount(el.querySelector('#rep-cli-table'));
-    bindExportButtons(el, { title: 'Clientes facturados / frecuentes', columns: cols, getRows: () => rows, filename: 'reporte_clientes' });
+    bindExportButtons(el, { title: `Clientes facturados (${range.from} a ${range.to})`, columns: cols, getRows: () => rows, filename: 'reporte_clientes' });
+    bindRangeControls(el, (r, p) => { presetCli = p; dibujarCli(el, r); }, { activo: presetCli });
   }
 
   // ---------------- Comprobantes de depósito ----------------

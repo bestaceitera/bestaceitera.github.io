@@ -9,7 +9,7 @@ import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControl
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { repartirEntre, resumenPorEmpleado } from './comisionCore.js';
-import { porRango, avisoDeTope } from './reporteCore.js';
+import { porRango, avisoDeTope, tomarTurno } from './reporteCore.js';
 
 /**
  * Arma la matriz día × empleado.
@@ -80,14 +80,16 @@ function armarProductos(ventas, ordenes) {
 async function renderDiario(el) {
   let preset = 'mes';
   let range = applyRangePreset(preset);
+  const turno = tomarTurno();
 
   async function draw() {
+    const mio = turno.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [ventas, ordenes] = await Promise.all([
       porRango('sales', range),
       porRango('serviceOrders', range),
     ]);
-    if (!el.isConnected) return;
+    if (!turno.vigente(mio) || !el.isConnected) return;
 
     const { dias, empleados } = armarMatriz(ventas, ordenes);
     const productos = armarProductos(ventas, ordenes);

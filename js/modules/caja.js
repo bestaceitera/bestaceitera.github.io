@@ -395,6 +395,14 @@ async function render(container) {
     const primera = await getByDateRange('cashMovements', rango, { max: 1500 });
     if (!el.isConnected) return;
     let movements = primera.filas;
+    // Un período muy largo puede no caber. Sin decirlo, el historial mostraría
+    // un pedazo como si fuera todo: a cinco ventas diarias, "este año" pasa del
+    // tope al tercer año y nadie se enteraría.
+    let truncado = primera.truncado;
+    const avisoTope = () => truncado
+      ? `<div class="alert alert-warning">Este período tiene más de 1,500 movimientos, así que se
+         muestran los más recientes. Elige un período más corto para verlo completo.</div>`
+      : '';
     const table = renderTable({
       columns: [
         // Se muestra el DÍA AL QUE PERTENECE el movimiento, no la hora en que se
@@ -419,9 +427,13 @@ async function render(container) {
       pageSize: 15,
       emptyMessage: 'No hubo movimientos de caja en las fechas seleccionadas.',
     });
-    el.innerHTML = `
-      <div class="toolbar" id="cj-fechas" style="margin-bottom:10px">${dateRangePresetButtons({ conAyer: true })}</div>
-      <div class="card">${table.html}</div>`;
+    const pintar = () => {
+      el.innerHTML = `
+        <div class="toolbar" id="cj-fechas" style="margin-bottom:10px">${dateRangePresetButtons({ conAyer: true })}</div>
+        ${avisoTope()}
+        <div class="card">${table.html}</div>`;
+    };
+    pintar();
     const tabla = table.mount(el.querySelector('.card'));
     bindRangeControls(el.querySelector('#cj-fechas'), async (r) => {
       const mio = ++peticion;
@@ -431,6 +443,10 @@ async function render(container) {
         const res = await getByDateRange('cashMovements', rango, { max: 1500 });
         if (mio !== peticion) return;
         movements = res.filas;
+        truncado = res.truncado;
+        const aviso = el.querySelector('.alert-warning');
+        if (truncado && !aviso) el.querySelector('#cj-fechas').insertAdjacentHTML('afterend', avisoTope());
+        else if (!truncado && aviso) aviso.remove();
       } catch (err) {
         if (mio !== peticion) return;
         movements = [];

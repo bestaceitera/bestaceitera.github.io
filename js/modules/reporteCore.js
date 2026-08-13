@@ -70,3 +70,24 @@ export function detalleDe(registro) {
   if (Number(registro.costoManoObra) > 0) partes.push('mano de obra');
   return partes.join(', ') || '—';
 }
+
+/**
+ * Turnos para que un dibujo viejo no pinte encima de uno nuevo.
+ *
+ * Al cambiar rápido de período, cada clic lanza su consulta y gana la que
+ * termina de última, que no siempre es la última pedida. Se veía el botón
+ * marcando "esta semana" y la tabla mostrando los datos de "todo": cifras de un
+ * período bajo la etiqueta de otro, que es la peor forma de equivocarse.
+ *
+ *   const turno = tomarTurno();
+ *   const mio = turno.nuevo();
+ *   const datos = await pedir();
+ *   if (!turno.vigente(mio)) return;   // ya hay uno más nuevo, este sobra
+ */
+export function tomarTurno() {
+  let actual = 0;
+  return {
+    nuevo: () => ++actual,
+    vigente: (mio) => mio === actual,
+  };
+}

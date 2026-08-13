@@ -9,7 +9,7 @@ import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindR
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { cuadrarPorDia } from './cuadreCore.js';
-import { porRango, avisoDeTope } from './reporteCore.js';
+import { porRango, avisoDeTope, tomarTurno } from './reporteCore.js';
 import { traerBoleta, tieneBoleta } from './boletas.js';
 
 let presetComp = 'mes';
@@ -17,10 +17,13 @@ let soloPendientes = false;
 
 async function renderComprobantes(el) {
   let range = applyRangePreset(presetComp);
+  const turno = tomarTurno();
 
   async function draw() {
+    const mio = turno.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const depositos = await porRango('deposits', range, { max: 500 });
+    if (!turno.vigente(mio) || !el.isConnected) return;
     const conFoto = depositos.filter(tieneBoleta);
     const sinFoto = depositos.filter((d) => !tieneBoleta(d));
     const montoSinFoto = round2(sinFoto.reduce((s, d) => s + (Number(d.monto) || 0), 0));
@@ -106,14 +109,17 @@ let presetBancos = 'mes';
 
 async function renderBancos(el) {
   let range = applyRangePreset(presetBancos);
+  const turno = tomarTurno();
 
   async function draw() {
+    const mio = turno.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [ventas, ordenes, depositos] = await Promise.all([
       porRango('sales', range, { max: 4000 }),
       porRango('serviceOrders', range, { max: 3000 }),
       porRango('deposits', range, { max: 1000 }),
     ]);
+    if (!turno.vigente(mio) || !el.isConnected) return;
 
     // Lo que entró por transferencia o tarjeta, venga de una venta o de una orden:
     // dinero que NO pasó por el cajón y por tanto llegó a una cuenta.
@@ -219,12 +225,15 @@ let presetUso = 'mes';
 
 async function renderUsoPropio(el) {
   let range = applyRangePreset(presetUso);
+  const turno = tomarTurno();
 
   async function draw() {
+    const mio = turno.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     // Se guarda la lista COMPLETA aparte: filtrar crea un arreglo nuevo y se
     // perdería la marca de "no cupo todo" que trae el original.
     const todosLosMovs = await porRango('inventoryMovements', range, { max: 3000 });
+    if (!turno.vigente(mio) || !el.isConnected) return;
     const movs = todosLosMovs.filter((m) => m.motivo === 'uso propio');
 
     const costoDe = (m) => round2((Number(m.costoUnitario) || 0) * (Number(m.cantidad) || 0));
@@ -300,13 +309,16 @@ let presetCaja = 'mes';
 
 async function renderCaja(el) {
   let range = applyRangePreset(presetCaja);
+  const turno = tomarTurno();
 
   async function draw() {
+    const mio = turno.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const [movimientos, deposits] = await Promise.all([
       porRango('cashMovements', range, { max: 4000 }),
       porRango('deposits', range, { max: 1000 }),
     ]);
+    if (!turno.vigente(mio) || !el.isConnected) return;
     const dias = cuadrarPorDia(movimientos);
     const totalDepositar = round2(dias.reduce((s, d) => s + d.aDepositar, 0));
     const totalVendido = round2(dias.reduce((s, d) => s + d.totalEntradas, 0));

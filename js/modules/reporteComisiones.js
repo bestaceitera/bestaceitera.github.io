@@ -4,13 +4,15 @@ import { renderTable, openModal, dateRangePresetButtons, applyRangePreset, bindR
 import { formatQ, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { resumenPorEmpleado } from './comisionCore.js';
-import { porRango, avisoDeTope } from './reporteCore.js';
+import { porRango, avisoDeTope, tomarTurno } from './reporteCore.js';
 
 async function renderComisiones(el) {
   let preset = 'mes';
   let range = applyRangePreset(preset);
+  const turno = tomarTurno();
 
   async function draw() {
+    const mio = turno.nuevo();
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     // Solo se piden los registros del período elegido, no todo el historial.
     const [sales, orders, invMovs] = await Promise.all([
@@ -18,6 +20,7 @@ async function renderComisiones(el) {
       porRango('serviceOrders', range),
       porRango('inventoryMovements', range, { max: 3000 }),
     ]);
+    if (!turno.vigente(mio) || !el.isConnected) return;
     const ventasPeriodo = sales;
     const ordenesPeriodo = orders;
     const totalVentas = round2(ventasPeriodo.reduce((s, v) => s + v.total, 0));
