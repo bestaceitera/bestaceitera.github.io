@@ -45,6 +45,9 @@ async function render(container, profile) {
   let pagina = 1;
   let rango = rangoGuardado || applyRangePreset('mes');
   let cargando = false;
+  // Si una consulta falla, la pantalla lo dice y ofrece reintentar. Antes se
+  // quedaba vacía o cargando y no había salida más que recargar la página.
+  let fallo = null;
   let peticion = 0;
 
   container.innerHTML = `
@@ -67,30 +70,48 @@ async function render(container, profile) {
    * respuesta el usuario cambia de filtro, la respuesta vieja se descarta: nunca
    * se pinta un período encima de otro.
    */
+  /**
+   * El dinero pendiente de depositar NO depende del período que se esté viendo:
+   * es el mismo se mire "hoy" o "este año". Por eso se pide UNA vez al abrir la
+   * pantalla y no en cada clic de los botones de fecha.
+   *
+   * Cuando iba junto con lo demás, cada clic disparaba seis consultas en vez de
+   * cuatro; al cambiar rápido de "este mes" a "esta semana" a "hoy" se apilaban
+   * y la pantalla se quedaba en "Cargando…" hasta recargar la página.
+   */
+  async function cargarPendiente() {
+    try {
+      const desde = new Date();
+      desde.setDate(desde.getDate() - 180);
+      const amplio = { from: desde.toISOString().slice(0, 10), to: '2100-01-01' };
+      const [movs, cierresAmplio] = await Promise.all([
+        getByDateRange('cashMovements', amplio, { max: 6000 }),
+        getByDateRange('cashClosings', amplio, { max: 800 }),
+      ]);
+      pendiente = pendienteDeDepositar(cuadrarPorDia(movs.filas), {
+        cerrados: new Set(cierresAmplio.filas.filter((c) => !c.anulado).map((c) => c.fecha)),
+      });
+    } catch (err) {
+      // Que falle el aviso de pendiente no debe tumbar la pantalla de ventas.
+      pendiente = { desde: null, dias: [], total: 0 };
+      console.warn('No se pudo calcular el pendiente de depositar:', err.message);
+    }
+    if (card.isConnected) pintar();
+  }
+
   async function cargar() {
     const mio = ++peticion;
     cargando = true;
+    fallo = null;
     pintar();
     try {
-      // El pendiente de depositar mira los últimos meses, no el período elegido:
-      // dinero sin depositar de hace más de medio año sería un problema mucho
-      // mayor que un reporte, y el tope evita descargar el historial completo.
-      const desdeAmplio = new Date();
-      desdeAmplio.setDate(desdeAmplio.getDate() - 180);
-      const rangoAmplio = { from: desdeAmplio.toISOString().slice(0, 10), to: '2100-01-01' };
-
-      const [r, movimientos, closings, depos, movsAmplio, cierresAmplio] = await Promise.all([
+      const [r, movimientos, closings, depos] = await Promise.all([
         getByDateRange('sales', rango, { max: 1500 }),
         getByDateRange('cashMovements', rango, { max: 4000 }),
         getByDateRange('cashClosings', rango, { max: 500 }),
         getByDateRange('deposits', rango, { max: 500 }),
-        getByDateRange('cashMovements', rangoAmplio, { max: 6000 }),
-        getByDateRange('cashClosings', rangoAmplio, { max: 800 }),
       ]);
       if (mio !== peticion) return;
-      pendiente = pendienteDeDepositar(cuadrarPorDia(movsAmplio.filas), {
-        cerrados: new Set(cierresAmplio.filas.filter((c) => !c.anulado).map((c) => c.fecha)),
-      });
       depositosPorDia = new Map();
       depos.filas.forEach((d) => {
         if (!depositosPorDia.has(d.fecha)) depositosPorDia.set(d.fecha, []);
@@ -113,7 +134,7 @@ async function render(container, profile) {
       cierres = new Map();
       anulados = new Map();
       depositosPorDia = new Map();
-      pendiente = { desde: null, dias: [], total: 0 };
+      fallo = err.message || 'no se pudo conectar';
       toast('No se pudieron cargar las ventas: ' + err.message, 'danger', 6000);
     } finally {
       if (mio === peticion) { cargando = false; pintar(); }
@@ -214,6 +235,16 @@ async function render(container, profile) {
       card.querySelector('#v-resumen').innerHTML = '';
       card.querySelector('#v-dias').innerHTML = '<div class="empty-state">Cargando…</div>';
       card.querySelector('#v-paginacion').innerHTML = '';
+      return;
+    }
+    if (fallo) {
+      card.querySelector('#v-resumen').innerHTML = '';
+      card.querySelector('#v-dias').innerHTML = `<div class="empty-state">
+        No se pudieron cargar las ventas: ${escapeHtml(fallo)}.<br>
+        <button class="btn btn-primary mt-16" id="v-reintentar">Reintentar</button>
+      </div>`;
+      card.querySelector('#v-paginacion').innerHTML = '';
+      card.querySelector('#v-reintentar').addEventListener('click', cargar);
       return;
     }
     const filtradas = filtrar();
@@ -324,6 +355,7 @@ async function render(container, profile) {
       abrirDepositosDelDia({ fecha: verdepositos, depositos: depositosPorDia.get(verdepositos) || [], onSaved: cargar });
     }
   });
+  cargarPendiente();
   await cargar();
 
   function viewDetail(s) {

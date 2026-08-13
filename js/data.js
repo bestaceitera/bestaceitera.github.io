@@ -14,13 +14,31 @@ function col(name) {
  * siga siendo rápido y barato dentro del plan gratuito cuando, con los años,
  * haya miles de ventas y movimientos guardados.
  */
+/**
+ * Cuánto se espera por una consulta antes de darla por perdida.
+ *
+ * Sin esto, una consulta que nunca contesta —señal intermitente, la pestaña
+ * dormida, demasiadas consultas a la vez— deja la pantalla en "Cargando…" para
+ * siempre y solo se sale recargando la página. Con el tope, falla y avisa: un
+ * error se puede reintentar, una pantalla congelada no.
+ */
+const TIEMPO_MAXIMO_MS = 20000;
+
+function conTiempoLimite(promesa, que) {
+  let reloj;
+  const limite = new Promise((_, rechazar) => {
+    reloj = setTimeout(() => rechazar(new Error(`la consulta de ${que} tardó demasiado; revisa la conexión`)), TIEMPO_MAXIMO_MS);
+  });
+  return Promise.race([promesa, limite]).finally(() => clearTimeout(reloj));
+}
+
 export async function getAll(name, { order, direction = 'asc', filters = [], max } = {}) {
   let q = col(name);
   const clauses = filters.map((f) => where(f[0], f[1], f[2]));
   if (order) clauses.push(orderBy(order, direction));
   if (max) clauses.push(fsApi.limit(max));
   if (clauses.length) q = query(col(name), ...clauses);
-  const snap = await getDocs(q);
+  const snap = await conTiempoLimite(getDocs(q), name);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 

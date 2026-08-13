@@ -1,5 +1,5 @@
 import { getAll } from '../data.js';
-import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
+import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls, dibujarConReintento } from '../ui.js';
 import { formatQ, round2, escapeHtml } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { renderComprobantes, renderBancos, renderUsoPropio, renderCaja } from './reportesDinero.js';
@@ -35,7 +35,7 @@ async function render(container) {
       b.classList.toggle('btn-primary', isActive);
       b.classList.toggle('btn-secondary', !isActive);
     });
-    renderers[tab](content);
+    dibujarConReintento(content, renderers[tab]);
   }
   tabButtons.forEach((b) => b.addEventListener('click', () => setActiveTab(b.dataset.tab)));
   setActiveTab('inventario');

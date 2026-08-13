@@ -60,6 +60,31 @@ export function confirmDialog(message) {
   });
 }
 
+/**
+ * Dibuja un panel que pide datos y, si algo falla, lo deja utilizable.
+ *
+ * Cada pantalla pinta "Cargando…" y después espera a la base. Si esa espera
+ * termina en error, la excepción se pierde y el "Cargando…" se queda para
+ * siempre: la única salida era recargar la página. Con esto se ve qué pasó y
+ * hay un botón para reintentar ahí mismo.
+ */
+export function dibujarConReintento(el, dibujar) {
+  const correr = async () => {
+    try {
+      await dibujar(el);
+    } catch (err) {
+      if (!el.isConnected) return;
+      el.innerHTML = `<div class="empty-state">
+        No se pudo cargar esta sección.<br>
+        <span class="text-muted">${escapeHtml(err?.message || 'sin conexión')}</span><br>
+        <button class="btn btn-primary mt-16" data-reintentar>Reintentar</button>
+      </div>`;
+      el.querySelector('[data-reintentar]')?.addEventListener('click', correr);
+    }
+  };
+  return correr();
+}
+
 /* ---------------- Tabla con búsqueda + paginación ---------------- */
 /**
  * renderTable({ columns, rows, searchKeys, pageSize, emptyMessage, rowActions })

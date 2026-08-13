@@ -1,7 +1,7 @@
 import { getAll, getByDateRange, addRecord, updateRecord } from '../data.js';
 import { addCashMovement } from './cajaCore.js';
 import { computeExpected } from './cuadreCore.js';
-import { renderTable, toast, confirmDialog, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
+import { renderTable, toast, confirmDialog, formValues, dateRangePresetButtons, applyRangePreset, bindRangeControls, dibujarConReintento } from '../ui.js';
 import { escapeHtml, formatQ, formatDateTime, formatDateLong, round2, todayISO } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 
@@ -60,7 +60,7 @@ async function render(container) {
       b.classList.toggle('btn-secondary', !isActive);
     });
     const renderers = { control: renderControl, cuadre: renderCuadre, devoluciones: renderDevoluciones, historial: renderHistorial };
-    renderers[tab](content);
+    dibujarConReintento(content, renderers[tab]);
   }
   tabButtons.forEach((b) => b.addEventListener('click', () => setActiveTab(b.dataset.tab)));
   setActiveTab(pestanaActiva);
