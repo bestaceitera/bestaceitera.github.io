@@ -131,6 +131,15 @@ service cloud.firestore {
       allow read, create, delete: if soloRegistrar();
       allow update: if isAdmin();
     }
+    // La FOTO de la boleta, aparte del depósito y con su mismo id. Estaba dentro
+    // del documento del depósito, y como Firestore no sabe traer un documento sin
+    // uno de sus campos, cualquier consulta de depósitos se arrastraba todas las
+    // fotos: la pantalla de Ventas descargaba cientos de KB de boletas que no
+    // muestra, y eso crecía sin freno. Separada, se baja solo al abrirla.
+    match /depositPhotos/{id} {
+      allow read, create, delete: if soloRegistrar();
+      allow update: if isAdmin();
+    }
 
     // ---- Retiros pendientes de devolver ----
     // El empleado marca la devolución cuando repone el dinero, así que necesita

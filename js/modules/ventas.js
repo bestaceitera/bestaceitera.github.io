@@ -4,6 +4,7 @@ import { openSaleForm } from './ventaForm.js';
 import { listarBancos } from './bancos.js';
 import { cuadrarPorDia, cuadrePorFecha } from './cuadreCore.js';
 import { pendienteDeDepositar } from './pendienteCore.js';
+import { tieneBoleta } from './boletas.js';
 import { abrirCierreDia, abrirDepositoDia, abrirDepositosDelDia } from './cierreDia.js';
 import { openModal, closeModal, toast, confirmDialog, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
@@ -179,7 +180,7 @@ async function render(container, profile) {
     // Lo ya depositado es un botón, no una etiqueta: abre la boleta aquí mismo.
     // Antes había que irse a Depósitos bancarios solo para ver la foto.
     const hechos = depositosPorDia.get(fecha) || [];
-    const conFoto = hechos.filter((d) => d.fotoBase64).length;
+    const conFoto = hechos.filter(tieneBoleta).length;
     const verDepositos = hechos.length
       ? `<button class="btn btn-sm chip-estado ok" data-verdepositos="${fecha}"
            title="Ver la boleta del depósito y, si te equivocaste de banco, eliminarlo">

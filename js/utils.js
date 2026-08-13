@@ -97,10 +97,11 @@ function blobToDataURL(blob) {
  * El último intento es agresivo a propósito para GARANTIZAR que siempre quepa
  * (nunca debe fallar el guardado por una foto pesada).
  */
-export async function compressImageForFirestore(file, { maxBytes = 200000 } = {}) {
-  // Una boleta de depósito se lee perfectamente a ~1000px. Guardarla más grande
-  // solo gasta almacenamiento: a 700KB por foto, en 10 años se superaría el
-  // espacio gratuito. A ~150KB caben cómodamente miles de comprobantes.
+export async function compressImageForFirestore(file, { maxBytes = 70000 } = {}) {
+  // Una boleta es texto negro sobre papel blanco: se lee perfectamente a ~900px
+  // con calidad media. Se apuntaba a 200KB y salían de 140 a 180KB cada una;
+  // bajando a 70KB se leen igual de bien y pesan la tercera parte, que es lo que
+  // se descarga y se guarda cada vez.
   const attempts = [
     { maxDim: 1200, quality: 0.65 },
     { maxDim: 1000, quality: 0.6 },

@@ -10,6 +10,7 @@ import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { cuadrarPorDia } from './cuadreCore.js';
 import { porRango, avisoDeTope } from './reporteCore.js';
+import { traerBoleta, tieneBoleta } from './boletas.js';
 
 let presetComp = 'mes';
 let soloPendientes = false;
@@ -20,8 +21,8 @@ async function renderComprobantes(el) {
   async function draw() {
     el.innerHTML = '<div class="empty-state">Cargando…</div>';
     const depositos = await porRango('deposits', range, { max: 500 });
-    const conFoto = depositos.filter((d) => d.fotoBase64);
-    const sinFoto = depositos.filter((d) => !d.fotoBase64);
+    const conFoto = depositos.filter(tieneBoleta);
+    const sinFoto = depositos.filter((d) => !tieneBoleta(d));
     const montoSinFoto = round2(sinFoto.reduce((s, d) => s + (Number(d.monto) || 0), 0));
 
     const lista = soloPendientes ? sinFoto : depositos;
@@ -47,9 +48,9 @@ async function renderComprobantes(el) {
       </div>
       ${lista.length ? `<div class="comprobantes-grid mt-16">
         ${lista.map((d) => `
-          <div class="comprobante${d.fotoBase64 ? '' : ' sin-foto'}">
-            ${d.fotoBase64
-              ? `<img src="${d.fotoBase64}" alt="Boleta" data-ver="${d.id}">`
+          <div class="comprobante${tieneBoleta(d) ? '' : ' sin-foto'}">
+            ${tieneBoleta(d)
+              ? `<img alt="Boleta" data-ver="${d.id}" loading="lazy" decoding="async">`
               : `<div class="comprobante-vacio">Sin boleta</div>`}
             <div class="comprobante-datos">
               <b>${formatQ(d.monto)}</b>
@@ -64,6 +65,19 @@ async function renderComprobantes(el) {
           : 'No hubo depósitos en estas fechas.'}</div>`}
     `;
 
+    // Las boletas se bajan DESPUÉS de pintar la pantalla y de una en una: así la
+    // galería aparece al instante y las fotos van llegando, en vez de esperar a
+    // que se descarguen todas para mostrar algo.
+    (async () => {
+      for (const d of lista) {
+        if (!tieneBoleta(d)) continue;
+        const img = el.querySelector(`[data-ver="${d.id}"]`);
+        if (!img || !img.isConnected) continue;
+        const foto = await traerBoleta(d.id, d);
+        if (foto && img.isConnected) img.src = foto;
+      }
+    })();
+
     el.querySelectorAll('[data-filtro]').forEach((b) => b.addEventListener('click', () => {
       soloPendientes = b.dataset.filtro === 'pendientes';
       draw();
@@ -72,7 +86,7 @@ async function renderComprobantes(el) {
     el.querySelectorAll('[data-ver]').forEach((img) => img.addEventListener('click', () => {
       const d = depositos.find((x) => x.id === img.dataset.ver);
       openModal(`Boleta — ${d.banco || ''} · ${formatQ(d.monto)}`, `
-        <img src="${d.fotoBase64}" class="photo-preview" style="max-width:100%">
+        <img src="${img.src}" class="photo-preview" style="max-width:100%">
         <p class="mt-16">${escapeHtml(formatDateLong(d.fecha))}${d.boleta ? ` · Boleta No. ${escapeHtml(d.boleta)}` : ''}</p>
         ${d.observaciones ? `<p class="text-muted">${escapeHtml(d.observaciones)}</p>` : ''}
       `);

@@ -9,6 +9,7 @@ import { openModal, closeModal, toast } from '../ui.js';
 import { escapeHtml, formatQ, round2, formatDateLong, nowTimeHM, compressImageForFirestore } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { etiquetaBanco } from './bancos.js';
+import { guardarBoleta, traerBoleta, tieneBoleta, borrarBoleta } from './boletas.js';
 
 /**
  * Cierra un día: se cuenta el efectivo físico y se guarda si cuadró, faltó o sobró.
@@ -283,9 +284,12 @@ export function abrirDepositoDia({ fecha, dia, bancos = [], onSaved }) {
         fecha, hora: nowTimeHM(), banco,
         bancoCuenta: $('dd-banco').selectedOptions?.[0]?.dataset.cuenta || '',
         boleta: $('dd-boleta').value.trim(),
-        monto, observaciones: $('dd-obs').value.trim(), fotoBase64,
+        monto, observaciones: $('dd-obs').value.trim(), tieneFoto: !!fotoBase64,
         usuarioId: user?.uid || null, usuarioNombre: user?.nombre || '',
       });
+      // La foto va en su propia colección: dentro del depósito haría pesada cada
+      // consulta de depósitos, aunque nadie la esté mirando.
+      await guardarBoleta(depositId, fotoBase64);
       // La salida de caja lleva la fecha DEL DÍA depositado, no la de hoy: si no,
       // registrar hoy el depósito de ayer descuadraría la caja de hoy.
       await addCashMovement({
@@ -328,8 +332,8 @@ export function abrirDepositosDelDia({ fecha, depositos = [], onSaved }) {
         </div>
         ${d.observaciones ? `<div class="text-muted" style="font-size:12.5px">${escapeHtml(d.observaciones)}</div>` : ''}
       </div>
-      ${d.fotoBase64
-        ? `<img src="${d.fotoBase64}" class="deposito-foto" data-zoom="${d.id}" alt="Boleta del depósito" title="Tócala para verla grande">`
+      ${tieneBoleta(d)
+        ? `<img class="deposito-foto" data-zoom="${d.id}" alt="Boleta del depósito" title="Tócala para verla grande" loading="lazy" decoding="async">`
         : '<div class="deposito-sinfoto">Sin foto<br>de la boleta</div>'}
       <button type="button" class="btn btn-danger btn-sm" data-borrar="${d.id}">Eliminar</button>
     </div>`).join('');
@@ -345,6 +349,19 @@ export function abrirDepositosDelDia({ fecha, depositos = [], onSaved }) {
 
   const cerrar = () => { closeModal(); if (huboCambios && onSaved) onSaved(); };
   document.getElementById('cancel-form').addEventListener('click', cerrar);
+
+  // Las boletas se bajan aquí, solo cuando alguien abre esta lista. Si viajaran
+  // dentro del depósito, cada consulta de depósitos de todo el sistema cargaría
+  // con ellas aunque nadie las mire.
+  const pintarBoletas = async () => {
+    for (const d of lista) {
+      const img = document.querySelector(`#dl-lista [data-zoom="${d.id}"]`);
+      if (!img || img.src) continue;
+      const foto = await traerBoleta(d.id, d);
+      if (foto && img.isConnected) img.src = foto;
+    }
+  };
+  pintarBoletas();
 
   document.getElementById('dl-lista').addEventListener('click', async (e) => {
     const foto = e.target.closest('[data-zoom]');
@@ -380,6 +397,7 @@ export function abrirDepositosDelDia({ fecha, depositos = [], onSaved }) {
       const movs = await getAll('cashMovements', { filters: [['referenciaId', '==', dep.id]] });
       for (const m of movs) await removeRecord('cashMovements', m.id);
       await removeRecord('deposits', dep.id);
+      await borrarBoleta(dep.id);
       lista = lista.filter((d) => d.id !== dep.id);
       huboCambios = true;
       toast(`Depósito de ${formatQ(dep.monto)} eliminado.`, 'success', 5000);
@@ -387,7 +405,7 @@ export function abrirDepositosDelDia({ fecha, depositos = [], onSaved }) {
       // Si cerraron el modal con Escape mientras se borraba, ya no hay lista que
       // repintar; el cambio igual se avisó y la pantalla se recarga al cerrar.
       const cont = document.getElementById('dl-lista');
-      if (cont) cont.innerHTML = filas();
+      if (cont) { cont.innerHTML = filas(); pintarBoletas(); }
     } catch (err) {
       toast('No se pudo eliminar el depósito: ' + err.message, 'danger', 6000);
       btn.disabled = false;

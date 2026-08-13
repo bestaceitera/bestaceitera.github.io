@@ -4,6 +4,7 @@ import { renderTable, openModal, closeModal, toast, formValues, dateRangePresetB
 import { escapeHtml, formatQ, compressImageForFirestore, todayISO, nowTimeHM } from '../utils.js';
 import { getCurrentUser } from '../auth.js';
 import { listarBancos, etiquetaBanco } from './bancos.js';
+import { guardarBoleta, traerBoleta, tieneBoleta } from './boletas.js';
 
 // El período elegido se guarda fuera de render() para que no se pierda cuando la
 // pantalla se refresca sola al llegar un cambio desde otro dispositivo.
@@ -27,7 +28,7 @@ async function render(container) {
       { key: 'boleta', label: 'No. boleta' },
       { key: 'monto', label: 'Monto', format: (r) => formatQ(r.monto) },
       { key: 'usuarioNombre', label: 'Usuario' },
-      { key: 'foto', label: 'Comprobante', format: (r) => r.fotoBase64 ? `<button class="btn btn-secondary btn-sm" data-photo="${r.id}">Ver foto</button>` : '<span class="text-muted">Sin foto</span>' },
+      { key: 'foto', label: 'Comprobante', format: (r) => tieneBoleta(r) ? `<button class="btn btn-secondary btn-sm" data-photo="${r.id}">Ver foto</button>` : '<span class="text-muted">Sin foto</span>' },
     ],
     rows: deposits,
     searchKeys: ['banco', 'boleta', 'usuarioNombre', 'observaciones'],
@@ -63,9 +64,20 @@ async function render(container) {
     if (id) {
       const dep = deposits.find((d) => d.id === id);
       openModal(`Comprobante — ${dep.banco}`, `
-        <img src="${dep.fotoBase64}" class="photo-preview" style="max-width:100%">
+        <div class="empty-state" id="dep-foto-cargando">Cargando la boleta…</div>
+        <img id="dep-foto-grande" class="photo-preview" style="max-width:100%" decoding="async" hidden>
         <p class="mt-16 text-muted">${escapeHtml(dep.observaciones || '')}</p>
       `);
+      // La foto se baja al abrirla, no antes: por eso la lista de depósitos es
+      // liviana aunque haya cientos de comprobantes guardados.
+      traerBoleta(dep.id, dep).then((foto) => {
+        const img = document.getElementById('dep-foto-grande');
+        const cargando = document.getElementById('dep-foto-cargando');
+        if (!img) return;
+        if (foto) { img.src = foto; img.hidden = false; }
+        if (cargando) cargando.textContent = foto ? '' : 'Este depósito no tiene boleta.';
+        if (cargando && foto) cargando.remove();
+      });
     }
   });
 
@@ -149,9 +161,10 @@ async function render(container) {
           fecha: v.fecha || todayISO(), hora: nowTimeHM(), banco: v.banco.trim(),
           bancoCuenta: document.querySelector('#dep-form [name="banco"]')?.selectedOptions?.[0]?.dataset.cuenta || '',
           boleta: v.boleta.trim(),
-          monto: Number(v.monto), observaciones: v.observaciones.trim(), fotoBase64,
+          monto: Number(v.monto), observaciones: v.observaciones.trim(), tieneFoto: !!fotoBase64,
           usuarioId: user.uid, usuarioNombre: user.nombre,
         });
+        await guardarBoleta(depositId, fotoBase64);
         // El movimiento de caja tiene que llevar la MISMA fecha del depósito. Si no,
         // registrar hoy el depósito de ayer restaría el dinero del efectivo de hoy,
         // que ya no lo tiene: la caja de hoy saldría faltante sin razón.
