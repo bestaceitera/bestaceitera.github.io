@@ -1,4 +1,4 @@
-import { auth, authApi } from './firebase-config.js';
+import { auth, authApi, sesionLista } from './firebase-config.js';
 import { getById, setRecord } from './data.js';
 
 const {
@@ -42,6 +42,14 @@ async function ensureProfile(fbUser) {
 
 /** Se dispara en cada cambio de sesión (login/logout/recarga de página). */
 export function onAuthChange(callback) {
+  // Se espera a que quede fijada la duración de la sesión antes de leerla: si no,
+  // el primer aviso podría venir de la sesión vieja guardada en disco.
+  let soltar = null;
+  sesionLista.then(() => { soltar = suscribir(callback); });
+  return () => { if (soltar) soltar(); };
+}
+
+function suscribir(callback) {
   return onAuthStateChanged(auth, async (fbUser) => {
     if (!fbUser) {
       currentProfile = null;
@@ -74,6 +82,7 @@ export function onAuthChange(callback) {
 
 export async function login(username, password) {
   const email = usernameToEmail(username);
+  await sesionLista;
   const cred = await signInWithEmailAndPassword(auth, email, password);
   return ensureProfile(cred.user);
 }

@@ -28,6 +28,25 @@ const app = initializeApp(firebaseConfig);
 export const auth = authMod.getAuth(app);
 
 /**
+ * La sesión vive SOLO mientras el navegador está abierto.
+ *
+ * Por defecto Firebase la guarda en el disco: al abrir el link entrabas directo
+ * al sistema, con la cuenta del último que lo usó. En un mostrador compartido
+ * eso significa que el empleado podía caer en la sesión del administrador y ver
+ * comisiones, compras y gastos sin haber puesto una contraseña.
+ *
+ * Con esto, refrescar la página no molesta —la sesión sigue— pero al cerrar el
+ * navegador se pide usuario y contraseña otra vez.
+ */
+export const sesionLista = authMod
+  .setPersistence(auth, authMod.browserSessionPersistence)
+  .catch((err) => {
+    // Si el navegador no lo permite, se sigue con lo que haya: peor es no poder
+    // entrar al sistema.
+    console.warn('No se pudo limitar la sesión al navegador:', err?.code || err?.message);
+  });
+
+/**
  * Guarda una copia local de los datos en el navegador.
  *
  * Sin esto, si se cae el internet las pantallas no fallan: muestran CERO

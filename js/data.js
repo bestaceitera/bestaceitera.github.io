@@ -21,8 +21,12 @@ function col(name) {
  * dormida, demasiadas consultas a la vez— deja la pantalla en "Cargando…" para
  * siempre y solo se sale recargando la página. Con el tope, falla y avisa: un
  * error se puede reintentar, una pantalla congelada no.
+ *
+ * Medio minuto es de sobra: una consulta normal tarda menos de medio segundo.
+ * Se deja holgado a propósito para no asustar con un aviso falso cuando la
+ * conexión del negocio anda lenta.
  */
-const TIEMPO_MAXIMO_MS = 20000;
+const TIEMPO_MAXIMO_MS = 30000;
 
 function conTiempoLimite(promesa, que) {
   let reloj;
