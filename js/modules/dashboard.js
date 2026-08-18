@@ -26,18 +26,24 @@ async function render(container, profile) {
   desde.setMonth(desde.getMonth() - 5);
   const desdeISO = `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, '0')}-01`;
 
-  const [sales, serviceOrders, products, cashMovementsToday, deposits] = await Promise.all([
+  // Los conteos (`countRecords`) solo se muestran como cantidad: se cuentan en el
+  // servidor en vez de descargarlos, así el dashboard no se frena aunque haya
+  // miles de registros.
+  //
+  // Van en el MISMO Promise.all que las descargas, no en un segundo grupo. Antes
+  // eran dos esperas seguidas y el dashboard pagaba la suma de las dos (~660 ms)
+  // en vez de la más lenta (~350 ms), aunque ningún dato dependiera del otro.
+  const [sales, serviceOrders, products, cashMovementsToday, deposits,
+         numCompras, numClientes, numProveedores] = await Promise.all([
     getAll('sales', { filters: [['fecha', '>=', desdeISO]], max: 4000 }),
     getAll('serviceOrders', { filters: [['fecha', '>=', desdeISO]], max: 2000 }),
     getAll('products'),
     getAll('cashMovements', { filters: [['fecha', '==', todayISO()]] }),
     getAll('deposits', { order: 'createdAt', direction: 'desc', max: 5 }),
+    isAdmin ? countRecords('purchases') : 0,
+    isAdmin ? countRecords('customers') : 0,
+    isAdmin ? countRecords('suppliers') : 0,
   ]);
-  // Estos tres solo se muestran como cantidad: se cuentan en el servidor en vez
-  // de descargarlos, así el dashboard no se frena aunque haya miles de registros.
-  const [numCompras, numClientes, numProveedores] = isAdmin
-    ? await Promise.all([countRecords('purchases'), countRecords('customers'), countRecords('suppliers')])
-    : [0, 0, 0];
 
   const today = todayISO();
   const ventasHoy = sales.filter((s) => s.fecha === today);

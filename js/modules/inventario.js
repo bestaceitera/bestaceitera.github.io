@@ -19,8 +19,12 @@ async function render(container) {
   let truncado = false;
   let peticion = 0;
 
-  const products = await getAll('products', { order: 'nombre' });
-  const primera = await getByDateRange('inventoryMovements', rango, { max: 1200 });
+  // Las dos consultas no dependen una de la otra, así que salen juntas. En fila
+  // la pantalla tardaba lo que suman las dos; en paralelo tarda lo que la más lenta.
+  const [products, primera] = await Promise.all([
+    getAll('products', { order: 'nombre' }),
+    getByDateRange('inventoryMovements', rango, { max: 1200 }),
+  ]);
   movements = primera.filas;
   truncado = primera.truncado;
 

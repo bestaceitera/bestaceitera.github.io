@@ -2,8 +2,8 @@ import { getAll, getByDateRange, updateRecord, removeRecord, adjustStockAtomic }
 import { openUsoPropioForm } from './usoPropio.js';
 import { openSaleForm } from './ventaForm.js';
 import { listarBancos } from './bancos.js';
-import { cuadrarPorDia, cuadrePorFecha } from './cuadreCore.js';
-import { pendienteDeDepositar, avisoPendienteHtml } from './pendienteCore.js';
+import { cuadrePorFecha } from './cuadreCore.js';
+import { calcularPendiente, avisoPendienteHtml } from './pendienteCore.js';
 import { tieneBoleta } from './boletas.js';
 import { abrirCierreDia, abrirDepositoDia, abrirDepositosDelDia } from './cierreDia.js';
 import { openModal, closeModal, toast, confirmDialog, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
@@ -81,16 +81,7 @@ async function render(container, profile) {
    */
   async function cargarPendiente() {
     try {
-      const desde = new Date();
-      desde.setDate(desde.getDate() - 180);
-      const amplio = { from: desde.toISOString().slice(0, 10), to: '2100-01-01' };
-      const [movs, cierresAmplio] = await Promise.all([
-        getByDateRange('cashMovements', amplio, { max: 6000 }),
-        getByDateRange('cashClosings', amplio, { max: 800 }),
-      ]);
-      pendiente = pendienteDeDepositar(cuadrarPorDia(movs.filas), {
-        cerrados: new Set(cierresAmplio.filas.filter((c) => !c.anulado).map((c) => c.fecha)),
-      });
+      pendiente = await calcularPendiente();
     } catch (err) {
       // Que falle el aviso de pendiente no debe tumbar la pantalla de ventas.
       pendiente = { desde: null, dias: [], total: 0 };
@@ -415,9 +406,12 @@ async function render(container, profile) {
 
   /** Solo se editan los datos que NO mueven dinero ni inventario. */
   async function openEditForm(s) {
-    const users = await getAll('users', { order: 'nombre' });
+    // Juntas, no en fila: el formulario abre en el tiempo de una sola consulta.
+    const [users, customers] = await Promise.all([
+      getAll('users', { order: 'nombre' }),
+      getAll('customers', { order: 'nombre' }),
+    ]);
     const empleados = users.filter((u) => u.tipo === 'empleado' && u.activo !== false);
-    const customers = await getAll('customers', { order: 'nombre' });
     const yaAsignados = new Set((s.empleadosComision || []).map((e) => e.empleadoId));
 
     openModal(`Editar venta ${s.numero}`, `
