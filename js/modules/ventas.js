@@ -1,6 +1,7 @@
-import { getAll, getByDateRange, updateRecord, removeRecord, adjustStockAtomic } from '../data.js';
+import { getAll, getByDateRange, removeRecord, adjustStockAtomic } from '../data.js';
 import { openUsoPropioForm } from './usoPropio.js';
 import { openSaleForm } from './ventaForm.js';
+import { openEditForm } from './ventaEditar.js';
 import { listarBancos } from './bancos.js';
 import { cuadrePorFecha } from './cuadreCore.js';
 import { calcularPendiente, avisoPendienteHtml } from './pendienteCore.js';
@@ -8,7 +9,6 @@ import { tieneBoleta } from './boletas.js';
 import { abrirCierreDia, abrirDepositoDia, abrirDepositosDelDia } from './cierreDia.js';
 import { openModal, closeModal, toast, confirmDialog, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
-import { CONSUMIDOR_FINAL } from './clientes.js';
 
 const DIAS_POR_PAGINA = 7;
 
@@ -353,7 +353,8 @@ async function render(container, profile) {
         <button class="btn btn-danger" id="v-eliminar">Eliminar venta</button>
       </div>
     `);
-    document.getElementById('v-editar').addEventListener('click', () => openEditForm(s));
+    document.getElementById('v-editar').addEventListener('click', () =>
+      openEditForm(s, { profile, onSaved: () => render(container, profile) }));
     document.getElementById('v-eliminar').addEventListener('click', () => eliminarVenta(s));
   }
 
@@ -402,80 +403,6 @@ async function render(container, profile) {
     } catch (err) {
       toast('No se pudo eliminar: ' + err.message, 'danger', 6000);
     }
-  }
-
-  /** Solo se editan los datos que NO mueven dinero ni inventario. */
-  async function openEditForm(s) {
-    // Juntas, no en fila: el formulario abre en el tiempo de una sola consulta.
-    const [users, customers] = await Promise.all([
-      getAll('users', { order: 'nombre' }),
-      getAll('customers', { order: 'nombre' }),
-    ]);
-    const empleados = users.filter((u) => u.tipo === 'empleado' && u.activo !== false);
-    const yaAsignados = new Set((s.empleadosComision || []).map((e) => e.empleadoId));
-
-    openModal(`Editar venta ${s.numero}`, `
-      <div class="card" style="background:var(--primary-light);border-color:var(--primary);margin-bottom:14px">
-        Aquí se corrigen <b>cliente, fecha y quién realizó la venta</b>. Para cambiar productos,
-        precios o el monto, elimina la venta y regístrala de nuevo (así el inventario y la caja
-        se recalculan bien).
-      </div>
-      <div class="form-row">
-        <label>Cliente
-          <select id="ed-cliente">
-            <option value="CF" ${s.clienteId === 'CF' ? 'selected' : ''}>Consumidor Final</option>
-            ${customers.map((c) => `<option value="${c.id}" data-nombre="${escapeHtml(c.nombre)}" ${s.clienteId === c.id ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
-          </select>
-        </label>
-        <label>Fecha de la venta
-          <input type="date" id="ed-fecha" value="${escapeHtml(s.fecha || todayISO())}" max="${todayISO()}">
-        </label>
-      </div>
-      <div class="section-title">¿Quién realizó esta venta?</div>
-      <div class="tag-list" id="ed-empleados">
-        ${empleados.map((u) => `<label class="chip" style="cursor:pointer">
-            <input type="checkbox" value="${u.id}" data-nombre="${escapeHtml(u.nombre)}" data-comision="${u.comision || 0}" style="width:auto" ${yaAsignados.has(u.id) ? 'checked' : ''}> ${escapeHtml(u.nombre)}
-          </label>`).join('')}
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" id="cancel-form">Cancelar</button>
-        <button class="btn btn-primary" id="ed-guardar">Guardar cambios</button>
-      </div>
-    `);
-    document.getElementById('cancel-form').addEventListener('click', closeModal);
-    document.getElementById('ed-guardar').addEventListener('click', async () => {
-      const marcados = [...document.querySelectorAll('#ed-empleados input:checked')].map((el) => ({
-        empleadoId: el.value, empleadoNombre: el.dataset.nombre, comisionPct: Number(el.dataset.comision) || 0,
-      }));
-      if (!marcados.length) { toast('Selecciona al menos un empleado.', 'danger'); return; }
-      const opt = document.getElementById('ed-cliente').selectedOptions[0];
-      const nuevaFecha = document.getElementById('ed-fecha').value || s.fecha;
-      try {
-        await updateRecord('sales', s.id, {
-          clienteId: opt.value,
-          clienteNombre: opt.value === 'CF' ? CONSUMIDOR_FINAL.nombre : opt.dataset.nombre,
-          clienteTipo: opt.value === 'CF' ? 'CF' : 'registrado',
-          fecha: nuevaFecha,
-          empleadosComision: marcados,
-        });
-        // Si cambió la fecha, TODO el rastro de la venta se mueve con ella: el
-        // dinero, para que el cuadre de cada día siga cuadrando, y la salida de
-        // inventario, para que el kardex no diga que el producto salió un día en
-        // el que no hubo venta. Antes solo se movía la caja y el inventario
-        // quedaba anclado al día en que se tecleó.
-        if (nuevaFecha !== s.fecha) {
-          for (const coleccion of ['cashMovements', 'inventoryMovements']) {
-            const movs = await getAll(coleccion, { filters: [['referenciaId', '==', s.id]] });
-            for (const m of movs) await updateRecord(coleccion, m.id, { fecha: nuevaFecha });
-          }
-        }
-        toast('Venta actualizada.', 'success');
-        closeModal();
-        render(container, profile);
-      } catch (err) {
-        toast('No se pudo guardar: ' + err.message, 'danger');
-      }
-    });
   }
 
 }

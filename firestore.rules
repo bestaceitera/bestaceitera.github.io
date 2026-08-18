@@ -93,7 +93,17 @@ service cloud.firestore {
     // deshace el movimiento de caja, por eso también necesita tocar esos dos
     // rastros (ver más abajo).
     match /sales/{id} {
-      allow read, create, update, delete: if signedIn();
+      allow read, create, delete: if signedIn();
+      // Los MONTOS son del administrador. El mostrador puede corregir a quien le
+      // vendio, la fecha y el cliente —datos que no mueven dinero— pero no el
+      // total, los precios ni lo que pago el cliente: eso cambia el arqueo del dia
+      // y lo que hay que depositar. Esconder los campos en pantalla no basta; sin
+      // esta regla bastaria con abrir la consola del navegador para subirse o
+      // bajarse una venta desde la cuenta de empleado.
+      allow update: if isAdmin() || (signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['clienteId', 'clienteNombre', 'clienteTipo', 'fecha',
+                       'empleadosComision', 'updatedAt']));
     }
     match /serviceOrders/{id} {
       allow read, create, update, delete: if signedIn();
