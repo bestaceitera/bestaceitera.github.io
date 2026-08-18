@@ -326,7 +326,8 @@ async function renderCaja(el) {
 
     const rows = dias.map((d) => ({
       fecha: d.fecha,
-      dia: formatDateLong(d.fecha),
+      // Fecha completa, no "Hoy": este reporte se exporta y se archiva.
+      dia: formatDateLong(d.fecha, { relativo: false }),
       entradas: formatQ(d.totalEntradas),
       salidas: formatQ(round2(d.totalSalidas - d.depositado)),
       depositado: formatQ(d.depositado),

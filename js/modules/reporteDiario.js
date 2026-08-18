@@ -1,80 +1,70 @@
-// Detalle día por día: cuánto vendió cada empleado cada día, y qué producto
-// salió cada día.
+// Detalle día por día: cada venta con lo que se vendió, quién se la lleva y
+// cuánto le toca de comisión, agrupado por día como en la pantalla de Ventas.
 //
-// El reparto de una venta compartida es EL MISMO que usa el reporte de
-// comisiones (`repartirEntre`): si dos pantallas repartieran distinto, los dos
-// reportes darían cifras diferentes para la misma venta y no habría forma de
-// saber cuál creer. Por eso la función vive en un solo lugar y las dos la usan.
+// El reparto de una venta compartida se hace SOBRE EL TOTAL DE LA VENTA, con la
+// misma `repartirEntre` que usa el reporte de comisiones. Repartir producto por
+// producto se vería más detallado, pero cada línea redondearía por su cuenta y
+// la suma del día terminaría a unos centavos de lo que dice el reporte de
+// comisiones: dos reportes del mismo mes con cifras distintas y sin forma de
+// saber cuál creer. Por eso el desglose de productos va en su columna, como
+// texto, y el dinero se reparte una sola vez por venta.
 import { renderTable, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { formatQ, round2, escapeHtml, formatDateLong } from '../utils.js';
 import { exportButtonsHtml, bindExportButtons } from '../export.js';
 import { repartirEntre, resumenPorEmpleado } from './comisionCore.js';
-import { porRango, avisoDeTope, tomarTurno } from './reporteCore.js';
+import { porRango, avisoDeTope, tomarTurno, detalleDe } from './reporteCore.js';
+
+const SIN_ASIGNAR = 'Sin asignar';
 
 /**
- * Arma la matriz día × empleado.
- *
- * Devuelve además el % de comisión de cada uno y lo que le toca cobrar, porque
- * es la pregunta que sigue siempre después de "¿cuánto vendió?".
+ * Convierte ventas y órdenes en una lista plana de operaciones, cada una con su
+ * reparto por empleado ya resuelto.
  */
-function armarMatriz(ventas, ordenes) {
-  const dias = new Map();   // fecha -> { fecha, total, sinAsignar, porEmpleado: {} }
-  const delDia = (fecha) => {
-    if (!dias.has(fecha)) dias.set(fecha, { fecha, total: 0, sinAsignar: 0, porEmpleado: {} });
-    return dias.get(fecha);
-  };
-
-  const procesar = (registros, campoEmpleados) => {
+function operaciones(ventas, ordenes) {
+  const salida = [];
+  const cargar = (registros, campoEmpleados, tipo) => {
     for (const r of registros) {
-      const d = delDia(r.fecha || 'sin fecha');
-      d.total = round2(d.total + (Number(r.total) || 0));
+      const total = Number(r.total) || 0;
       const emps = r[campoEmpleados] || [];
-      // Las ventas viejas, de antes de que se exigiera anotar quién vendió, no
-      // se pierden: suman al total del día y se muestran aparte como sin asignar.
-      if (!emps.length) { d.sinAsignar = round2(d.sinAsignar + (Number(r.total) || 0)); continue; }
-      const partes = repartirEntre(Number(r.total) || 0, emps.length);
-      emps.forEach((e, i) => {
-        const nombre = e.empleadoNombre || '(sin nombre)';
-        d.porEmpleado[nombre] = round2((d.porEmpleado[nombre] || 0) + partes[i]);
+      const porEmpleado = {};
+      if (!emps.length) {
+        // Ventas de antes de que se exigiera anotar quién vendió: no se pierden,
+        // suman al total del día y se muestran aparte, sin generar comisión.
+        porEmpleado[SIN_ASIGNAR] = total;
+      } else {
+        const partes = repartirEntre(total, emps.length);
+        emps.forEach((e, i) => {
+          const nombre = e.empleadoNombre || '(sin nombre)';
+          porEmpleado[nombre] = round2((porEmpleado[nombre] || 0) + partes[i]);
+        });
+      }
+      salida.push({
+        fecha: r.fecha || 'sin fecha', numero: r.numero || '', tipo,
+        detalle: detalleDe(r), total, porEmpleado,
+        hora: r.createdAt?.seconds || 0,
       });
     }
   };
-  procesar(ventas, 'empleadosComision');
-  procesar(ordenes, 'empleados');
-
-  // El total y la comisión de cada empleado los da comisionCore, la MISMA
-  // función que usan el reporte de ventas y el de comisiones. Aquí solo se
-  // conserva el desglose día por día, que es lo propio de este reporte.
-  return {
-    dias: [...dias.values()].sort((a, b) => (a.fecha < b.fecha ? 1 : -1)),
-    empleados: resumenPorEmpleado(ventas, ordenes).map((e) => ({ ...e, total: e.totalVendido })),
-  };
+  cargar(ventas, 'empleadosComision', 'venta');
+  cargar(ordenes, 'empleados', 'servicio');
+  return salida;
 }
 
-/** Qué producto salió cada día, juntando ventas y productos usados en órdenes. */
-function armarProductos(ventas, ordenes) {
-  const mapa = new Map();  // fecha|producto -> fila
-  const sumar = (fecha, nombre, cantidad, monto, quien, folio) => {
-    const clave = `${fecha}|${nombre}`;
-    if (!mapa.has(clave)) mapa.set(clave, { fecha, producto: nombre, cantidad: 0, monto: 0, quienes: new Set(), folios: [] });
-    const f = mapa.get(clave);
-    f.cantidad += Number(cantidad) || 0;
-    f.monto = round2(f.monto + (Number(monto) || 0));
-    if (quien) quien.split(', ').filter(Boolean).forEach((q) => f.quienes.add(q));
-    f.folios.push(folio);
-  };
-
-  for (const v of ventas) {
-    const quien = (v.empleadosComision || []).map((e) => e.empleadoNombre).filter(Boolean).join(', ');
-    for (const i of v.items || []) sumar(v.fecha, i.nombre, i.cantidad, i.subtotal, quien, v.numero);
-  }
-  for (const o of ordenes) {
-    const quien = (o.empleados || []).map((e) => e.empleadoNombre).filter(Boolean).join(', ');
-    for (const i of o.productos || []) sumar(o.fecha, i.nombre, i.cantidad, i.subtotal, quien, o.numero);
+/** Agrupa las operaciones por día, de la más reciente a la más antigua. */
+function porDias(ops) {
+  const mapa = new Map();
+  for (const o of ops) {
+    if (!mapa.has(o.fecha)) mapa.set(o.fecha, { fecha: o.fecha, ops: [], total: 0, porEmpleado: {} });
+    const d = mapa.get(o.fecha);
+    d.ops.push(o);
+    d.total = round2(d.total + o.total);
+    for (const [nombre, monto] of Object.entries(o.porEmpleado)) {
+      d.porEmpleado[nombre] = round2((d.porEmpleado[nombre] || 0) + monto);
+    }
   }
   return [...mapa.values()]
-    .map((f) => ({ ...f, quienes: [...f.quienes].join(', ') || '—' }))
-    .sort((a, b) => (a.fecha === b.fecha ? b.monto - a.monto : (a.fecha < b.fecha ? 1 : -1)));
+    .map((d) => ({ ...d, ops: d.ops.sort((a, b) => a.hora - b.hora) }))
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
 }
 
 async function renderDiario(el) {
@@ -91,104 +81,110 @@ async function renderDiario(el) {
     ]);
     if (!turno.vigente(mio) || !el.isConnected) return;
 
-    const { dias, empleados } = armarMatriz(ventas, ordenes);
-    const productos = armarProductos(ventas, ordenes);
-    const haySinAsignar = dias.some((d) => d.sinAsignar > 0.009);
+    const ops = operaciones(ventas, ordenes);
+    const dias = porDias(ops);
+    // El total y la comisión de cada empleado los da comisionCore, la MISMA
+    // función que usan el reporte de ventas y el de comisiones.
+    const empleados = resumenPorEmpleado(ventas, ordenes);
+    const totalSinAsignar = round2(ops.reduce((s, o) => s + (o.porEmpleado[SIN_ASIGNAR] || 0), 0));
+    const haySinAsignar = totalSinAsignar > 0.009;
 
-    // Una columna por empleado, con su % en el encabezado: es lo que pidió el
-    // dueño para ver de un vistazo quién vendió qué y cuánto se le paga.
-    const colsDias = [
-      { key: 'dia', label: 'Día' },
-      { key: 'total', label: 'Total vendido' },
+    // Una columna por empleado, con su % en el encabezado: de un vistazo se ve
+    // quién vendió qué y cuánto se le paga, sin abrir otro reporte.
+    const columnas = [
+      { key: 'dia', label: 'Día / No.' },
+      { key: 'detalle', label: 'Qué se vendió' },
+      { key: 'total', label: 'Total' },
       ...empleados.map((e) => ({ key: `emp_${e.nombre}`, label: `${e.nombre} (${e.pctLabel})` })),
-      ...(haySinAsignar ? [{ key: 'sinAsignar', label: 'Sin asignar' }] : []),
+      ...(haySinAsignar ? [{ key: 'sinAsignar', label: SIN_ASIGNAR }] : []),
     ];
 
-    const filaDia = (d) => {
-      const fila = { dia: formatDateLong(d.fecha), total: formatQ(d.total) };
-      empleados.forEach((e) => { const m = d.porEmpleado[e.nombre] || 0; fila[`emp_${e.nombre}`] = m ? formatQ(m) : '—'; });
-      if (haySinAsignar) fila.sinAsignar = d.sinAsignar ? formatQ(d.sinAsignar) : '—';
-      return fila;
+    const fila = (base, montos) => {
+      const f = { ...base };
+      empleados.forEach((e) => {
+        const m = montos?.[e.nombre] || 0;
+        f[`emp_${e.nombre}`] = m ? formatQ(m) : '';
+      });
+      if (haySinAsignar) {
+        const m = montos?.[SIN_ASIGNAR] || 0;
+        f.sinAsignar = m ? formatQ(m) : '';
+      }
+      return f;
     };
 
+    // Cada día abre con su renglón de totales y debajo van sus ventas. Así el
+    // archivo se lee igual que la pantalla de Ventas: primero el día, luego el
+    // detalle de ese día.
+    const filas = [];
+    for (const d of dias) {
+      filas.push(fila({
+        dia: formatDateLong(d.fecha, { relativo: false }),
+        detalle: `${d.ops.length} ${d.ops.length === 1 ? 'operación' : 'operaciones'}`,
+        total: formatQ(d.total),
+      }, d.porEmpleado));
+      for (const o of d.ops) {
+        filas.push(fila({
+          dia: `    ${o.numero}`,
+          detalle: o.detalle + (o.tipo === 'servicio' ? '  (orden de servicio)' : ''),
+          total: formatQ(o.total),
+        }, o.porEmpleado));
+      }
+    }
+
     const totalPeriodo = round2(dias.reduce((s, d) => s + d.total, 0));
-    const totalSinAsignar = round2(dias.reduce((s, d) => s + d.sinAsignar, 0));
     const totalComisiones = round2(empleados.reduce((s, e) => s + e.comision, 0));
 
     // Las tres filas de cierre van DENTRO de la tabla para que salgan también en
     // el PDF y en el Excel: un reporte que en pantalla trae los totales y en el
     // archivo no, obliga a rehacer la suma a mano.
-    const filaResumen = (etiqueta, valorTotal, valorPorEmpleado, valorSin) => {
-      const fila = { dia: etiqueta, total: valorTotal };
-      empleados.forEach((e) => { fila[`emp_${e.nombre}`] = valorPorEmpleado(e); });
-      if (haySinAsignar) fila.sinAsignar = valorSin;
-      return fila;
+    const resumen = (etiqueta, valorTotal, porEmpleado, valorSin) => {
+      const f = { dia: etiqueta, detalle: '', total: valorTotal };
+      empleados.forEach((e) => { f[`emp_${e.nombre}`] = porEmpleado(e); });
+      if (haySinAsignar) f.sinAsignar = valorSin;
+      return f;
     };
-    const RESUMEN = { 'TOTAL DEL PERÍODO': 'fila-total', '% de comisión': 'fila-pct', 'COMISIÓN A PAGAR': 'fila-comision' };
-    const filasDias = [
-      ...dias.map(filaDia),
-      filaResumen('TOTAL DEL PERÍODO', formatQ(totalPeriodo), (e) => formatQ(e.total), formatQ(totalSinAsignar)),
-      filaResumen('% de comisión', '', (e) => e.pctLabel, '—'),
-      filaResumen('COMISIÓN A PAGAR', formatQ(totalComisiones), (e) => formatQ(e.comision), '—'),
-    ];
+    filas.push(resumen('TOTAL DEL PERÍODO', formatQ(totalPeriodo), (e) => formatQ(e.totalVendido), formatQ(totalSinAsignar)));
+    filas.push(resumen('% de comisión', '', (e) => e.pctLabel, '—'));
+    filas.push(resumen('COMISIÓN A PAGAR', formatQ(totalComisiones), (e) => formatQ(e.comision), '—'));
 
-    const colsProd = [
-      { key: 'dia', label: 'Día' },
-      { key: 'producto', label: 'Producto' },
-      { key: 'cantidad', label: 'Cantidad' },
-      { key: 'monto', label: 'Total' },
-      { key: 'quienes', label: 'Vendido por' },
-      { key: 'folios', label: 'Comprobantes' },
-    ];
-    const filasProd = productos.map((p) => ({
-      dia: formatDateLong(p.fecha), producto: p.producto, cantidad: p.cantidad,
-      monto: formatQ(p.monto), quienes: p.quienes, folios: p.folios.join(', '),
-    }));
-    const unidades = productos.reduce((s, p) => s + p.cantidad, 0);
+    const CLASES = {
+      'TOTAL DEL PERÍODO': 'fila-total', '% de comisión': 'fila-pct', 'COMISIÓN A PAGAR': 'fila-comision',
+    };
+    const esDia = new Set(dias.map((d) => formatDateLong(d.fecha, { relativo: false })));
 
     el.innerHTML = `
       <div class="toolbar">${dateRangePresetButtons({ conAyer: true })}</div>
       ${avisoDeTope(ventas, ordenes)}
       <p class="text-muted" style="margin:12px 0 0">Período: <b>${escapeHtml(range.from)}</b> a <b>${escapeHtml(range.to)}</b></p>
 
-      <div class="section-title">Qué vendió cada quien, día por día</div>
+      <div class="section-title">Día por día: qué se vendió y quién lo vendió</div>
       <div class="card">
         <div class="toolbar">${exportButtonsHtml()}</div>
-        <div id="rd-dias"></div>
-      </div>
-      ${totalSinAsignar > 0.009 ? `<p class="text-muted" style="font-size:12.5px;margin-top:8px">
-        ${formatQ(totalSinAsignar)} salen en <b>Sin asignar</b>: son ventas registradas antes de que
-        el sistema pidiera anotar quién vendió, así que no generan comisión para nadie.</p>` : ''}
-
-      <div class="section-title">Qué producto se vendió, día por día</div>
-      <div class="card">
-        <div class="toolbar">${exportButtonsHtml()}</div>
-        <div id="rd-productos"></div>
+        <div id="rd-tabla"></div>
       </div>
       <p class="text-muted" style="font-size:12.5px;margin-top:8px">
-        ${unidades} unidad(es) en total. Incluye los productos usados en órdenes de servicio.
-        Los productos que salieron <b>para uso propio</b> no aparecen aquí: no son venta y están en su propia pestaña.</p>
+        Cada día abre con su total y debajo van sus ventas, con los productos de cada una.
+        Cuando una venta la atienden entre varios, el monto <b>se reparte en partes iguales</b> entre ellos,
+        igual que en el reporte de comisiones.
+        ${haySinAsignar ? `<br>${formatQ(totalSinAsignar)} salen en <b>${SIN_ASIGNAR}</b>: son ventas registradas antes de que
+        el sistema pidiera anotar quién vendió, así que no generan comisión para nadie.` : ''}
+        <br>Los productos que salieron <b>para uso propio</b> no aparecen: no son venta y están en su propia pestaña.
+      </p>
     `;
 
-    const tDias = renderTable({ columns: colsDias, rows: filasDias, pageSize: 40,
-      emptyMessage: 'Sin ventas en el período.', rowClass: (f) => RESUMEN[f.dia] || '' });
-    const contDias = el.querySelector('#rd-dias');
-    contDias.innerHTML = tDias.html;
-    tDias.mount(contDias);
-
-    const tProd = renderTable({ columns: colsProd, rows: filasProd, searchKeys: ['producto', 'quienes'], pageSize: 20, emptyMessage: 'Sin productos vendidos en el período.' });
-    const contProd = el.querySelector('#rd-productos');
-    contProd.innerHTML = tProd.html;
-    tProd.mount(contProd);
-
-    // Cada tarjeta lleva sus propios botones, atados a su propia tabla.
-    bindExportButtons(contDias.closest('.card'), {
-      title: `Ventas por dia y empleado (${range.from} a ${range.to})`,
-      columns: colsDias, getRows: () => filasDias, filename: 'detalle_diario_empleados',
+    const tabla = renderTable({
+      columns: columnas, rows: filas, pageSize: 200,
+      searchKeys: ['dia', 'detalle'],
+      emptyMessage: 'Sin ventas en el período.',
+      rowClass: (f) => CLASES[f.dia] || (esDia.has(f.dia) ? 'fila-dia' : ''),
     });
-    bindExportButtons(contProd.closest('.card'), {
-      title: `Productos vendidos por dia (${range.from} a ${range.to})`,
-      columns: colsProd, getRows: () => filasProd, filename: 'detalle_diario_productos',
+    const cont = el.querySelector('#rd-tabla');
+    cont.innerHTML = tabla.html;
+    tabla.mount(cont);
+
+    bindExportButtons(cont.closest('.card'), {
+      title: `Detalle diario por empleado (${range.from} a ${range.to})`,
+      columns: columnas, getRows: () => filas, filename: 'detalle_diario',
     });
 
     bindRangeControls(el, (r, p) => { range = r; preset = p; draw(); }, { activo: preset });

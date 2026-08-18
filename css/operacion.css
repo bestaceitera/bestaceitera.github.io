@@ -287,6 +287,10 @@
 
 /* Filas de cierre del detalle diario. Sin esto se leen como un día más de la
    lista y el total del período se confunde con las ventas de un día. */
+/* Encabezado de cada día en el detalle diario: sus ventas van debajo, indentadas.
+   Sin este contraste, el renglón del día y sus ventas se leen como la misma cosa
+   y el total del día parece una venta más. */
+tr.fila-dia td { background: var(--primary-light); font-weight: 700; border-top: 1px solid var(--primary); }
 tr.fila-total td { border-top: 2px solid var(--text-muted); font-weight: 700; background: var(--bg); }
 tr.fila-pct td { color: var(--text-muted); font-size: 12.5px; background: var(--bg); }
 tr.fila-comision td { font-weight: 700; background: var(--success-light); color: #14622f; }
