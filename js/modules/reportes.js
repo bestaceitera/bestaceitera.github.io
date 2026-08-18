@@ -38,7 +38,11 @@ async function render(container) {
     dibujarConReintento(content, renderers[tab]);
   }
   tabButtons.forEach((b) => b.addEventListener('click', () => setActiveTab(b.dataset.tab)));
-  setActiveTab('inventario');
+  // La pestaña inicial se dibuja AL FINAL de esta función, no aquí: `renderInventario`
+  // lee `presetInv`, que se declara más abajo con `let`. Llamarlo desde aquí reventaba
+  // con "Cannot access 'presetInv' before initialization" y Reportes abría siempre en
+  // error, obligando a tocar "Reintentar" —que sí funcionaba, porque para entonces la
+  // declaración ya había corrido, y por eso el fallo parecía intermitente.
 
   // ---------------- Inventario ----------------
   let presetInv = 'anio';
@@ -305,6 +309,9 @@ async function render(container) {
    * depositó, bloquearlo dejaría la caja descuadrada). El control está aquí: esta
    * pantalla lista los que quedaron sin comprobante para ir a tomarles la foto.
    */
+
+  // Todo lo de arriba ya está declarado: recién ahora se puede dibujar.
+  setActiveTab('inventario');
 }
 
 export default { render };

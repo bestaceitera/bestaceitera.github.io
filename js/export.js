@@ -1,8 +1,66 @@
 import { formatDateTime } from './utils.js';
 import { toast } from './ui.js';
 
+/* ------------------------- Librerias bajo demanda -------------------------
+ * jsPDF, autotable y SheetJS pesan ~290 KB juntos. Estaban en tres <script> del
+ * index.html, asi que se descargaban SIEMPRE al abrir el sistema —el 37% de todo
+ * lo que baja el arranque— aunque nadie fuera a exportar nada ese dia. Ademas
+ * eran scripts clasicos, que frenan el armado de la pagina hasta que llegan: con
+ * la senal del taller lenta, eso es la pantalla en blanco durando de mas.
+ *
+ * Ahora se bajan la PRIMERA vez que alguien toca un boton de exportar. Se piden
+ * una sola vez aunque se toquen varios botones seguidos, y si fallan se avisa en
+ * vez de dejar el boton sin hacer nada.
+ */
+const CDN = 'https://cdnjs.cloudflare.com/ajax/libs';
+const FUENTES = {
+  jspdf:     `${CDN}/jspdf/2.5.1/jspdf.umd.min.js`,
+  autotable: `${CDN}/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js`,
+  xlsx:      `${CDN}/xlsx/0.18.5/xlsx.full.min.js`,
+};
+
+function bajarScript(src) {
+  return new Promise((listo, falla) => {
+    // Si ya esta puesto (por ejemplo, de una version anterior del index), no se repite.
+    const puesto = document.querySelector(`script[src="${src}"]`);
+    if (puesto) {
+      if (puesto.dataset.listo) return listo();
+      puesto.addEventListener('load', () => listo());
+      puesto.addEventListener('error', () => falla(new Error('no se pudo descargar la libreria')));
+      return;
+    }
+    const el = document.createElement('script');
+    el.src = src;
+    el.addEventListener('load', () => { el.dataset.listo = '1'; listo(); });
+    el.addEventListener('error', () => falla(new Error('no se pudo descargar la libreria; revisa la conexion')));
+    document.head.appendChild(el);
+  });
+}
+
+let pidiendoPdf = null;
+let pidiendoExcel = null;
+
+/** autotable se cuelga de jsPDF, asi que tiene que llegar DESPUES: van en fila a proposito. */
+function librosPdf() {
+  if (window.jspdf?.jsPDF && window.jspdf.jsPDF.API?.autoTable) return Promise.resolve();
+  if (!pidiendoPdf) {
+    pidiendoPdf = bajarScript(FUENTES.jspdf)
+      .then(() => bajarScript(FUENTES.autotable))
+      .catch((err) => { pidiendoPdf = null; throw err; });   // que un fallo no deje el boton muerto para siempre
+  }
+  return pidiendoPdf;
+}
+
+function librosExcel() {
+  if (window.XLSX) return Promise.resolve();
+  if (!pidiendoExcel) {
+    pidiendoExcel = bajarScript(FUENTES.xlsx).catch((err) => { pidiendoExcel = null; throw err; });
+  }
+  return pidiendoExcel;
+}
+
 /**
- * Exporta un arreglo de filas a PDF (tabla) usando jsPDF + autotable (cargados por CDN en index.html).
+ * Exporta un arreglo de filas a PDF (tabla) usando jsPDF + autotable.
  * columns: [{ key, label }]
  */
 function exportPDF({ title, subtitle = '', columns, rows, filename }) {
@@ -33,7 +91,7 @@ function nombreHojaValido(nombre) {
   return limpio.slice(0, 31) || 'Datos';
 }
 
-/** Exporta un arreglo de filas a un archivo .xlsx real usando SheetJS (cargado por CDN). */
+/** Exporta un arreglo de filas a un archivo .xlsx real usando SheetJS. */
 function exportExcel({ sheetName = 'Datos', columns, rows, filename }) {
   const data = rows.map((r) => {
     const obj = {};
@@ -57,18 +115,28 @@ export function exportButtonsHtml() {
 /** Engancha los botones de exportación dentro de `container` a los datos actuales (rows puede ser una función). */
 export function bindExportButtons(container, { title, columns, getRows, filename }) {
   // Si algo falla, el usuario debe enterarse: un botón que no hace nada es peor que un error.
-  const proteger = (fn, que) => () => {
+  const proteger = (traerLibreria, fn, que) => async (e) => {
+    const boton = e.currentTarget;
+    const rotulo = boton.textContent;
     try {
       const rows = getRows();
       if (!rows.length) { toast('No hay datos para exportar en este período.', 'info'); return; }
+      // La primera vez hay que bajar la librería: el botón lo dice en vez de
+      // quedarse mudo mientras llega.
+      boton.disabled = true;
+      boton.textContent = 'Preparando…';
+      await traerLibreria();
       fn(rows);
     } catch (err) {
       console.error('export', err);
       toast(`No se pudo generar el ${que}: ${err.message}`, 'danger', 6000);
+    } finally {
+      boton.disabled = false;
+      boton.textContent = rotulo;
     }
   };
   container.querySelector('[data-export="pdf"]')?.addEventListener('click',
-    proteger((rows) => exportPDF({ title, columns, rows, filename }), 'PDF'));
+    proteger(librosPdf, (rows) => exportPDF({ title, columns, rows, filename }), 'PDF'));
   container.querySelector('[data-export="excel"]')?.addEventListener('click',
-    proteger((rows) => exportExcel({ sheetName: title, columns, rows, filename }), 'Excel'));
+    proteger(librosExcel, (rows) => exportExcel({ sheetName: title, columns, rows, filename }), 'Excel'));
 }
