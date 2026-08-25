@@ -1,5 +1,5 @@
 import { getAll, getById, getByDateRange, addRecord, nextFolio } from '../data.js';
-import { applyStockChange } from './inventoryCore.js';
+import { applyStockChanges } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast, productSearch, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
@@ -388,9 +388,11 @@ async function render(container) {
           ...banco,
         });
         // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.
-        for (const item of productCart.filter((i) => i.productoId)) {
-          await applyStockChange(item.productoId, -item.cantidad, { motivo: 'servicio', referenciaId: orderId, usuario: currentUser, fecha: fechaOrden });
-        }
+        // Juntos, no en fila: son documentos distintos y sus transacciones no se pisan.
+        await applyStockChanges(
+          productCart.filter((i) => i.productoId).map((i) => ({ productoId: i.productoId, delta: -i.cantidad, nombre: i.nombre })),
+          { motivo: 'servicio', referenciaId: orderId, usuario: currentUser, fecha: fechaOrden },
+        );
         // Solo el efectivo físico recibido entra al arqueo de caja (tarjeta/transferencia no).
         const efectivoEnCaja = formaPago === 'efectivo' ? recibido : formaPago === 'mixto' ? efectivoMixto : 0;
         const responsable = empleadosOrden.map((e) => e.empleadoNombre).filter(Boolean).join(', ');

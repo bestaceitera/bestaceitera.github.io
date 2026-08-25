@@ -2,9 +2,9 @@
 // sistema (buscador de productos, carrito, empleados, formas de pago, banco) y
 // tenía a ventas.js pasado de tamaño. No depende de la pantalla: recibe lo que
 // necesita y avisa por `onSaved` cuando termina.
-import { getById, addRecord, nextFolio } from '../data.js';
+import { nextFolio, setRecord, nuevoId } from '../data.js';
 import { catalogo } from './catalogos.js';
-import { applyStockChange } from './inventoryCore.js';
+import { applyStockChanges } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { listarBancos, etiquetaBanco } from './bancos.js';
 import { openModal, closeModal, toast, productSearch } from '../ui.js';
@@ -329,65 +329,73 @@ export async function openSaleForm({ onSaved } = {}) {
       : { bancoId: null, bancoNombre: '', bancoCuenta: '' };
 
     const saveBtn = $('v-save');
+    const rotuloBoton = saveBtn.textContent;
+    // Guardar una venta grande toma su tiempo: el botón dice en qué va, en vez de
+    // quedarse apagado y hacer creer que el sistema se trabó.
+    const avisar = (texto) => { saveBtn.textContent = texto; };
+    const liberar = () => { saveBtn.disabled = false; saveBtn.textContent = rotuloBoton; };
     saveBtn.disabled = true;
     try {
-      // Se revisa el stock contra la base justo antes de guardar: si otro
-      // dispositivo vendió lo mismo mientras este formulario estaba abierto,
-      // la venta se rechaza entera en vez de dejar el inventario en negativo.
-      for (const item of cart.filter((i) => i.productoId)) {
-        const actual = await getById('products', item.productoId);
-        if (!actual) {
-          toast(`El producto "${item.nombre}" ya no existe. Quítalo de la venta.`, 'danger', 6000);
-          saveBtn.disabled = false; return;
-        }
-        if (Number(actual.stock || 0) < item.cantidad) {
-          toast(`Ya solo quedan ${actual.stock || 0} de "${item.nombre}". Ajusta la cantidad.`, 'danger', 6000);
-          saveBtn.disabled = false; return;
-        }
-      }
+      // El stock ya NO se revisa aparte. La transacción que descuenta el inventario
+      // valida los productos y sus existencias ANTES de escribir nada: si a uno le
+      // falta, no se descuenta ninguno y la venta se rechaza entera. Revisarlo antes
+      // era pedirle lo mismo a la base dos veces, y con ocho productos eso solo
+      // agregaba más de un segundo de espera con el cliente enfrente.
+      const delCatalogo = cart.filter((i) => i.productoId);
 
       const clienteOpt = $('v-cliente').selectedOptions[0];
       const clienteId = clienteOpt.value;
       const clienteNombre = clienteId === 'CF' ? CONSUMIDOR_FINAL.nombre : clienteOpt.dataset.nombre;
-      const numero = await nextFolio('sales', { prefix: 'V', pad: 1 });
       const fechaVenta = $('v-fecha').value || todayISO();
+      // El id se genera aquí mismo, así el inventario puede referenciar la venta sin
+      // esperar a que el servidor devuelva el id primero.
+      const saleId = nuevoId('sales');
 
-      const saleId = await addRecord('sales', {
-        numero, fecha: fechaVenta, usuarioId: user.uid, usuarioNombre: user.nombre,
-        clienteId, clienteNombre, clienteTipo: clienteId === 'CF' ? 'CF' : 'registrado',
-        items: cart.map((i) => ({
-          productoId: i.productoId ?? null, libre: !!i.libre, nombre: i.nombre, cantidad: i.cantidad,
-          precio: i.precio, descuento: 0, subtotal: round2(i.cantidad * i.precio),
-        })),
-        subtotal, descuentoTotal: descuento,
-        iva, total, formaPago, montoRecibido, vuelto, empleadosComision,
-        ...banco,
-      });
+      // El inventario va PRIMERO porque es lo único que puede rechazar la venta.
+      // Si falla, no se escribió nada: ni la venta, ni la caja, ni se gastó un
+      // número de folio (que dejaría un hueco en el correlativo).
+      avisar('Descontando del inventario…');
+      await applyStockChanges(
+        delCatalogo.map((i) => ({ productoId: i.productoId, delta: -i.cantidad, nombre: i.nombre })),
+        { motivo: 'venta', referenciaId: saleId, usuario: user, fecha: fechaVenta },
+      );
 
-      // Los artículos sueltos no están en el catálogo, así que no descuentan inventario.
-      for (const item of cart.filter((i) => i.productoId)) {
-        await applyStockChange(item.productoId, -item.cantidad, { motivo: 'venta', referenciaId: saleId, usuario: user, fecha: fechaVenta });
-      }
-
+      avisar('Guardando la venta…');
+      const numero = await nextFolio('sales', { prefix: 'V', pad: 1 });
       // Solo se registra en caja el efectivo físico que realmente entra al cajón.
-      // Tarjeta/transferencia no mueven efectivo, así que no afectan el arqueo de caja.
+      // Tarjeta/transferencia no mueven efectivo, así que no afectan el arqueo.
       const efectivoEnCaja = formaPago === 'efectivo' ? montoRecibido
         : formaPago === 'mixto' ? (Number($('v-mixto-efectivo').value) || 0)
         : 0;
       const responsable = empleadosComision.map((e) => e.empleadoNombre).filter(Boolean).join(', ');
-      if (efectivoEnCaja > 0) {
-        await addCashMovement({ tipo: 'entrada', categoria: 'venta', monto: efectivoEnCaja, motivo: `Venta ${numero} — ${clienteNombre}`, referenciaId: saleId, fecha: fechaVenta, responsable });
-      }
-      if (vuelto > 0) {
-        await addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto venta ${numero}`, referenciaId: saleId, fecha: fechaVenta, responsable });
-      }
+
+      // La venta y sus dos movimientos de caja no dependen unos de otros: van juntos.
+      await Promise.all([
+        setRecord('sales', saleId, {
+          numero, fecha: fechaVenta, usuarioId: user.uid, usuarioNombre: user.nombre,
+          clienteId, clienteNombre, clienteTipo: clienteId === 'CF' ? 'CF' : 'registrado',
+          items: cart.map((i) => ({
+            productoId: i.productoId ?? null, libre: !!i.libre, nombre: i.nombre, cantidad: i.cantidad,
+            precio: i.precio, descuento: 0, subtotal: round2(i.cantidad * i.precio),
+          })),
+          subtotal, descuentoTotal: descuento,
+          iva, total, formaPago, montoRecibido, vuelto, empleadosComision,
+          ...banco,
+        }),
+        efectivoEnCaja > 0
+          ? addCashMovement({ tipo: 'entrada', categoria: 'venta', monto: efectivoEnCaja, motivo: `Venta ${numero} — ${clienteNombre}`, referenciaId: saleId, fecha: fechaVenta, responsable })
+          : null,
+        vuelto > 0
+          ? addCashMovement({ tipo: 'salida', categoria: 'vuelto', monto: vuelto, motivo: `Vuelto venta ${numero}`, referenciaId: saleId, fecha: fechaVenta, responsable })
+          : null,
+      ]);
 
       toast(`Venta ${numero} registrada.` + (vuelto > 0 ? ` Vuelto: ${formatQ(vuelto)}` : ''), 'success', 5000);
       closeModal();
       if (onSaved) onSaved();
     } catch (err) {
-      toast('No se pudo registrar la venta: ' + err.message, 'danger');
-      saveBtn.disabled = false;
+      toast('No se pudo registrar la venta: ' + err.message, 'danger', 7000);
+      liberar();
     }
   });
 

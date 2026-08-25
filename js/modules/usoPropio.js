@@ -152,30 +152,35 @@ export function openUsoPropioForm({ products, empleados = [], onSaved }) {
     try {
       const nota = $('up-nota').value.trim();
       const fecha = $('up-fecha').value || todayISO();
-      for (const item of carrito) {
+      // Todas las líneas salen JUNTAS. Cada una toca un producto distinto, así que
+      // sus transacciones no se pisan; en fila, sacar diez productos esperaba diez
+      // viajes al servidor uno tras otro.
+      //
+      // Aquí no se usa `applyStockChanges` porque cada línea lleva SU propio costo
+      // unitario, y ese helper reparte las mismas opciones a todas.
+      await Promise.all(carrito.map((item) => {
         // El costo queda guardado en el movimiento para que el reporte pueda
         // decir cuánto producto salió sin generar ingreso, sin tener que ir a
         // buscar el precio de compra de cada producto después (que además pudo
         // haber cambiado desde entonces).
         const costoUnitario = Number(item.precioCompra) || 0;
         if (item.productoId) {
-          await applyStockChange(item.productoId, -item.cantidad, {
+          return applyStockChange(item.productoId, -item.cantidad, {
             motivo: 'uso propio',
             referenciaId: null,
             usuario: { uid: user?.uid, nombre: responsable },
             extra: { nota, fecha, costoUnitario },
           });
-        } else {
-          // No está en el catálogo: no hay stock que mover, solo queda la constancia.
-          await addRecord('inventoryMovements', {
-            productoId: null, libre: true, productoNombre: item.nombre,
-            tipo: 'salida', motivo: 'uso propio', cantidad: item.cantidad,
-            stockResultante: null, referenciaId: null,
-            usuarioId: user?.uid || null, usuarioNombre: responsable,
-            nota, fecha, costoUnitario: 0,
-          });
         }
-      }
+        // No está en el catálogo: no hay stock que mover, solo queda la constancia.
+        return addRecord('inventoryMovements', {
+          productoId: null, libre: true, productoNombre: item.nombre,
+          tipo: 'salida', motivo: 'uso propio', cantidad: item.cantidad,
+          stockResultante: null, referenciaId: null,
+          usuarioId: user?.uid || null, usuarioNombre: responsable,
+          nota, fecha, costoUnitario: 0,
+        });
+      }));
       toast('Salida registrada. No afecta la caja.', 'success', 4500);
       closeModal();
       if (onSaved) onSaved();

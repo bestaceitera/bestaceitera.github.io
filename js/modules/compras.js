@@ -1,5 +1,5 @@
 import { getAll, addRecord, nextFolio } from '../data.js';
-import { applyStockChange } from './inventoryCore.js';
+import { applyStockChanges } from './inventoryCore.js';
 import { addCashMovement } from './cajaCore.js';
 import { renderTable, openModal, closeModal, toast } from '../ui.js';
 import { escapeHtml, formatQ, round2, todayISO } from '../utils.js';
@@ -148,9 +148,12 @@ async function render(container) {
           items: cart,
           total,
         });
-        for (const item of cart) {
-          await applyStockChange(item.productoId, item.cantidad, { motivo: 'compra', referenciaId: purchaseId, usuario: user, fecha: fechaCompra });
-        }
+        // Juntos: recibir una factura de veinte productos no tiene por qué esperar
+        // veinte viajes al servidor uno tras otro.
+        await applyStockChanges(
+          cart.map((i) => ({ productoId: i.productoId, delta: i.cantidad, nombre: i.nombre })),
+          { motivo: 'compra', referenciaId: purchaseId, usuario: user, fecha: fechaCompra },
+        );
         // La salida de caja lleva la fecha de la compra, no la de hoy: así registrar
         // hoy una compra de la semana pasada no descuadra el efectivo de hoy.
         await addCashMovement({
