@@ -29,6 +29,8 @@ async function render(container, profile) {
   // que se está viendo.
   let sales = [];
   let truncado = false;
+  // El servidor no contestó y esto salió de la copia guardada en el navegador.
+  let desdeCopiaLocal = false;
   // Estado de cada día: cuánto efectivo quedó, cuánto falta depositar y si ya se
   // cerró. Es lo que permite ver de un vistazo qué días están listos y cuáles no.
   let porDia = new Map();
@@ -111,6 +113,7 @@ async function render(container, profile) {
       // Dentro de un mismo día se ordena por hora: la más reciente arriba.
       sales = r.filas.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       truncado = r.truncado;
+      desdeCopiaLocal = r.desdeCopiaLocal || movimientos.desdeCopiaLocal || closings.desdeCopiaLocal || depos.desdeCopiaLocal;
       porDia = cuadrePorFecha(movimientos.filas);
       // Un cierre anulado (día reabierto) no cuenta como cerrado, pero se guarda
       // para saber cuántas veces costó cuadrar ese día.
@@ -121,6 +124,7 @@ async function render(container, profile) {
       if (mio !== peticion) return;
       sales = [];
       truncado = false;
+      desdeCopiaLocal = false;
       porDia = new Map();
       cierres = new Map();
       anulados = new Map();
@@ -254,6 +258,14 @@ async function render(container, profile) {
       </div>` : '')
       // Si el período pedido tiene más ventas de las que caben, hay que decirlo:
       // un total incompleto mostrado como completo desajustaría la contabilidad.
+      // Se dice que son datos guardados, en vez de mostrarlos como si vinieran del
+      // servidor. Si el empleado registró una venta desde otro aparato hace un
+      // minuto, puede que todavía no esté aquí, y eso hay que avisarlo.
+      + (desdeCopiaLocal ? `<div class="alert alert-warning mt-16">
+          <b>Mostrando la copia guardada en este navegador.</b><br>
+          El servidor no contestó a tiempo, así que puede faltar lo más reciente.
+          Cuando vuelva la señal se actualiza solo; también puedes recargar la página.
+        </div>` : '')
       + (truncado ? `<div class="alert alert-warning mt-16">Este período tiene más de 1,500 ventas, así que se están mostrando las más recientes.
           El total de abajo <b>no incluye</b> las más antiguas: elige un período más corto para verlo completo.</div>` : '');
 

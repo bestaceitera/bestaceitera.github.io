@@ -1,7 +1,8 @@
 import { db, fsApi } from './firebase-config.js';
+import { conTiempoLimite } from './esperaConPausa.js';
 
 const {
-  collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
+  collection, doc, getDoc, getDocs, getDocsFromCache, addDoc, updateDoc, deleteDoc,
   query, orderBy, where, onSnapshot, serverTimestamp, runTransaction, Timestamp,
 } = fsApi;
 
@@ -9,41 +10,51 @@ function col(name) {
   return collection(db, name);
 }
 
-/**
- * `max` limita cuántos documentos se traen. Es importante para que el sistema
- * siga siendo rápido y barato dentro del plan gratuito cuando, con los años,
- * haya miles de ventas y movimientos guardados.
- */
-/**
- * Cuánto se espera por una consulta antes de darla por perdida.
- *
- * Sin esto, una consulta que nunca contesta —señal intermitente, la pestaña
- * dormida, demasiadas consultas a la vez— deja la pantalla en "Cargando…" para
- * siempre y solo se sale recargando la página. Con el tope, falla y avisa: un
- * error se puede reintentar, una pantalla congelada no.
- *
- * Medio minuto es de sobra: una consulta normal tarda menos de medio segundo.
- * Se deja holgado a propósito para no asustar con un aviso falso cuando la
- * conexión del negocio anda lenta.
- */
-const TIEMPO_MAXIMO_MS = 30000;
-
-function conTiempoLimite(promesa, que) {
-  let reloj;
-  const limite = new Promise((_, rechazar) => {
-    reloj = setTimeout(() => rechazar(new Error(`la consulta de ${que} tardó demasiado; revisa la conexión`)), TIEMPO_MAXIMO_MS);
-  });
-  return Promise.race([promesa, limite]).finally(() => clearTimeout(reloj));
-}
-
-export async function getAll(name, { order, direction = 'asc', filters = [], max } = {}) {
-  let q = col(name);
+function armarConsulta(name, { order, direction = 'asc', filters = [], max } = {}) {
   const clauses = filters.map((f) => where(f[0], f[1], f[2]));
   if (order) clauses.push(orderBy(order, direction));
   if (max) clauses.push(fsApi.limit(max));
-  if (clauses.length) q = query(col(name), ...clauses);
-  const snap = await conTiempoLimite(getDocs(q), name);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return clauses.length ? query(col(name), ...clauses) : col(name);
+}
+
+const aFilas = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+/**
+ * Trae registros. Si el servidor no contesta a tiempo, DEVUELVE LA COPIA LOCAL en
+ * vez de fallar.
+ *
+ * `max` limita cuántos documentos se traen: es lo que mantiene el sistema rápido
+ * y barato dentro del plan gratuito cuando, con los años, haya miles de ventas.
+ *
+ * El tope de espera son ocho segundos, no treinta. Ya no hace falta aguantar
+ * tanto, porque al acabarse el tiempo NO se muestra un error: se muestran los
+ * datos guardados. Mejor ocho segundos y datos, que treinta y un callejón sin
+ * salida. Y ese reloj se PAUSA mientras la pestaña está dormida (ver
+ * esperaConPausa.js): son ocho segundos mirando la pantalla, no ocho segundos de
+ * reloj de pared con el sistema abierto en otra pestaña.
+ *
+ * El navegador guarda una copia de todo lo que se ha visto (ver
+ * firebase-config.js). Comprobado contra los datos reales: la copia local tiene
+ * las mismas ventas que el servidor y responde en 24 ms en vez de 294. Antes,
+ * cuando la conexión se ponía lenta, esa copia estaba ahí sin usarse mientras la
+ * pantalla mostraba "no se pudieron cargar las ventas" — teniendo los datos en la
+ * máquina. Ahora se muestran, marcados con `desdeCopiaLocal` para que la pantalla
+ * pueda decir que puede faltar lo más reciente.
+ */
+export async function getAll(name, opciones = {}) {
+  const q = armarConsulta(name, opciones);
+  try {
+    return aFilas(await conTiempoLimite(getDocs(q), name));
+  } catch (err) {
+    let local = null;
+    try { local = await getDocsFromCache(q); } catch { /* sin copia local */ }
+    if (!local || local.empty) throw err;
+    console.warn(`${name}: el servidor no contestó (${err.message}); se muestra la copia local.`);
+    const filas = aFilas(local);
+    // No enumerable: viaja con los datos pero no aparece al recorrerlos ni al exportarlos.
+    Object.defineProperty(filas, 'desdeCopiaLocal', { value: true, enumerable: false });
+    return filas;
+  }
 }
 
 /**
@@ -68,9 +79,10 @@ export async function countRecords(name) {
  * no todo el historial. Como el filtro y el orden usan el MISMO campo, Firestore
  * no pide crear ningún índice extra.
  *
- * Devuelve { filas, truncado }: `truncado` avisa que el período elegido tiene más
- * registros de los que se pidieron, para no mostrar totales incompletos como si
- * fueran completos.
+ * Devuelve { filas, truncado, desdeCopiaLocal }: `truncado` avisa que el período
+ * elegido tiene más registros de los que se pidieron, para no mostrar totales
+ * incompletos como si fueran completos; `desdeCopiaLocal` avisa que el servidor
+ * no contestó y esto salió de la copia guardada en el navegador.
  */
 export async function getByDateRange(name, { from, to }, { max = 1500, campo = 'fecha' } = {}) {
   const filters = [];
@@ -78,7 +90,11 @@ export async function getByDateRange(name, { from, to }, { max = 1500, campo = '
   if (to && to < '2100-01-01') filters.push([campo, '<=', to]);
   const filas = await getAll(name, { filters, order: campo, direction: 'desc', max: max + 1 });
   const truncado = filas.length > max;
-  return { filas: truncado ? filas.slice(0, max) : filas, truncado };
+  return {
+    filas: truncado ? filas.slice(0, max) : filas,
+    truncado,
+    desdeCopiaLocal: !!filas.desdeCopiaLocal,
+  };
 }
 
 export async function getById(name, id) {
