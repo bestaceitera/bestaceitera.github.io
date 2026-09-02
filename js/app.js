@@ -5,6 +5,7 @@ import { soltarCatalogos } from './modules/catalogos.js';
 import { toast, openModal, closeModal, formValues } from './ui.js';
 import { getAll, addRecord } from './data.js';
 import { escapeHtml } from './utils.js';
+import { vigilarVersion } from './versionApp.js';
 
 import dashboard from './modules/dashboard.js';
 import ventas from './modules/ventas.js';
@@ -138,6 +139,8 @@ function openChangePasswordModal() {
 
 function init() {
   bindChrome();
+  // Avisa si el navegador se quedó con el código viejo (ver versionApp.js).
+  vigilarVersion();
 
   if (!isConfigured) {
     document.getElementById('login-error').hidden = false;

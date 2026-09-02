@@ -328,3 +328,15 @@ tr.fila-comision td { font-weight: 700; background: var(--success-light); color:
   margin-top: 7px; font-size: 12.5px; color: #7a5c00; opacity: .9;
 }
 .pendiente-dias .hoy { font-weight: 700; opacity: 1; }
+
+/* Aviso de versión vieja. Va fijo abajo y por encima de todo: si alguien está
+   cuadrando la caja con la fórmula vieja, tiene que enterarse. */
+.aviso-version {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 300;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--gold, #f0b429); color: #3a2a00;
+  border: 1px solid rgba(0,0,0,.15); border-radius: 10px;
+  padding: 12px 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  font-size: 13.5px; font-weight: 600;
+}
+.aviso-version .btn { margin-left: auto; }
