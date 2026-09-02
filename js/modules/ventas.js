@@ -8,7 +8,7 @@ import { calcularPendiente, avisoPendienteHtml } from './pendienteCore.js';
 import { tieneBoleta } from './boletas.js';
 import { abrirCierreDia, abrirDepositoDia, abrirDepositosDelDia } from './cierreDia.js';
 import { openModal, closeModal, toast, confirmDialog, dateRangePresetButtons, applyRangePreset, bindRangeControls } from '../ui.js';
-import { escapeHtml, formatQ, round2, todayISO, formatDateLong } from '../utils.js';
+import { escapeHtml, formatQ, round2, formatDateLong } from '../utils.js';
 
 const DIAS_POR_PAGINA = 7;
 
