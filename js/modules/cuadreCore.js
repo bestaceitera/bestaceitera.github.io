@@ -72,11 +72,25 @@ export function cuadrarPorDia(movimientos, { cajaChicaPorDefecto = CAJA_CHICA_PO
       const stats = computeExpected(movs);
       const tuvoFondo = stats.fondoInicial > 0;
       const cajaChica = tuvoFondo ? round2(stats.fondoInicial) : cajaChicaPorDefecto;
-      // Solo el dinero de las ventas del día: es lo que se cuenta al cerrar y lo
-      // que se lleva al banco. La caja chica queda fuera de esta cuenta.
+
+      // CUÁNTO EFECTIVO DEJÓ EL DÍA. Es lo que se cuenta al cerrar: las ventas en
+      // efectivo, menos los vueltos (ya netados en totalEntradas) y menos lo que
+      // salió del cajón para gastos, compras o retiros.
+      //
+      // Los depósitos NO se restan aquí, a propósito. Antes sí, y eso rompía el
+      // cierre: el mostrador cuenta el dinero, lo lleva al banco, registra el
+      // depósito y RECIÉN ENTONCES cierra el día —que es el orden natural—. Como
+      // el depósito ya estaba restado, el sistema esperaba cero y marcaba lo
+      // contado como sobrante. Un día que cuadraba perfecto salía con "sobró
+      // Q278". Sin restar el depósito, el número que se cuenta es el mismo se
+      // cierre antes o después de ir al banco: el orden deja de importar.
+      const efectivoDelDia = round2(stats.totalEntradas - (stats.totalSalidas - stats.depositos));
+
+      // CUÁNTO FALTA LLEVAR AL BANCO. Aquí sí se descuenta lo ya depositado.
       const efectivoVentas = round2(stats.totalEntradas - stats.totalSalidas);
       return {
         fecha, ...stats, tuvoFondo, cajaChica,
+        efectivoDelDia,
         efectivoVentas,
         depositado: stats.depositos,
         aDepositar: round2(Math.max(0, efectivoVentas)),

@@ -20,7 +20,10 @@ import { guardarBoleta, traerBoleta, tieneBoleta, borrarBoleta } from './boletas
 export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved }) {
   // Al cerrar se cuenta SOLO el dinero de las ventas del día. La caja chica es un
   // monto fijo que vive aparte, no se deposita y no se cuenta aquí.
-  const esperado = dia?.efectivoVentas ?? 0;
+  // Lo que se cuenta es lo que DEJÓ el día, no lo que quedó en el cajón después
+  // de ir al banco. Así el cierre da igual si se hace antes o después de
+  // depositar (ver cuadreCore.js).
+  const esperado = dia?.efectivoDelDia ?? 0;
 
   const cajaChica = dia?.cajaChica ?? 0;
 
@@ -93,14 +96,18 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
         <tr><td>Vueltos que diste</td><td class="text-right">− ${formatQ(dia?.vueltos ?? 0)}</td></tr>
         <tr><td>Gastos y compras</td><td class="text-right">− ${formatQ(round2((dia?.gastos ?? 0) + (dia?.compras ?? 0)))}</td></tr>
         <tr><td>Retiros</td><td class="text-right">− ${formatQ(dia?.retiros ?? 0)}</td></tr>
-        <tr><td>Depósitos ya hechos</td><td class="text-right">− ${formatQ(dia?.depositos ?? 0)}</td></tr>
         <tr style="font-weight:700;border-top:1px solid var(--border)">
-          <td>Efectivo de las ventas del día</td><td class="text-right">${formatQ(esperado)}</td></tr>
+          <td>Efectivo que dejó el día</td><td class="text-right">${formatQ(esperado)}</td></tr>
       </table>
       <p class="text-muted" style="font-size:12.5px;margin:10px 0 0">
         La caja chica de ${formatQ(dia?.cajaChica ?? 0)} <b>no entra en esta cuenta</b>:
         es un monto fijo que se queda aparte. Cuenta solo el dinero de las ventas.
       </p>
+      ${(dia?.depositos ?? 0) > 0.009 ? `<p class="text-muted" style="font-size:12.5px;margin:8px 0 0">
+        De esos ${formatQ(esperado)} ya llevaste <b>${formatQ(dia.depositos)}</b> al banco.
+        <b>Aun así escribe el total que contaste</b>, no lo que quedó en el cajón:
+        aquí se está cuadrando el día, no el cajón de este momento.
+      </p>` : ''}
     </div>
 
     <!-- Las dos únicas cosas que hay que hacer con las manos: apartar la caja
@@ -118,7 +125,7 @@ export function abrirCierreDia({ fecha, dia, cierre, cierresPrevios = 0, onSaved
       <b>${formatQ(dia?.aDepositar ?? 0)}</b>
     </div>
 
-    <label>¿Cuánto contaste de las ventas? (Q)
+    <label>¿Cuánto contaste de las ventas del día? (Q)
       <input type="number" id="cd-contado" min="0" step="0.01" placeholder="0.00">
     </label>
     <div id="cd-aviso"></div>
