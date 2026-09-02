@@ -6,6 +6,11 @@
 // período sin que nada avise.
 import { getByDateRange } from '../data.js';
 
+// `detalleDe` vive en utils.js: es formato puro, sin dependencias, y desde allí lo
+// puede usar comisionCore —que no toca Firebase a propósito, para poder probarse
+// sin navegador—. Se re-exporta aquí para no cambiar a quien ya lo importaba.
+export { detalleDe } from '../utils.js';
+
 /**
  * Trae los registros de un período.
  *
@@ -47,28 +52,6 @@ export function avisoDeTope(...listas) {
     Las cifras de abajo <b>no incluyen</b> todas las ${que} del período: elige un
     rango más corto (por ejemplo un mes) para ver el total real.
   </div>`;
-}
-
-/**
- * Qué se vendió en una venta o qué se hizo en una orden, en una sola línea.
- *
- * Es la columna que faltaba en el reporte de ventas: sin ella el PDF solo decía
- * "V24 · Q365" y había que abrir el sistema para saber de qué se trataba, que es
- * justo lo que un reporte impreso debería evitar.
- */
-export function detalleDe(registro) {
-  const partes = [];
-  // Venta: los productos con su cantidad cuando es más de uno.
-  for (const i of registro.items || []) {
-    partes.push(`${i.nombre}${(Number(i.cantidad) || 1) > 1 ? ` ×${i.cantidad}` : ''}`);
-  }
-  // Orden de servicio: primero los servicios, luego los productos usados.
-  for (const s of registro.servicios || []) partes.push(s.nombre);
-  for (const p of registro.productos || []) {
-    partes.push(`${p.nombre}${(Number(p.cantidad) || 1) > 1 ? ` ×${p.cantidad}` : ''}`);
-  }
-  if (Number(registro.costoManoObra) > 0) partes.push('mano de obra');
-  return partes.join(', ') || '—';
 }
 
 /**

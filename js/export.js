@@ -63,9 +63,13 @@ function librosExcel() {
  * Exporta un arreglo de filas a PDF (tabla) usando jsPDF + autotable.
  * columns: [{ key, label }]
  */
-function exportPDF({ title, subtitle = '', columns, rows, filename }) {
+function exportPDF({ title, subtitle = '', columns, rows, filename, apaisado = false }) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' });
+  // Se acuesta la hoja cuando hay muchas columnas, o cuando el reporte lo pide
+  // porque una de sus columnas lleva texto largo (la lista de productos, por
+  // ejemplo): en vertical esa columna se parte en cuatro renglones y el PDF se
+  // vuelve el doble de largo sin decir nada más.
+  const doc = new jsPDF({ orientation: (apaisado || columns.length > 6) ? 'landscape' : 'portrait' });
   doc.setFontSize(14);
   doc.text(title, 14, 16);
   doc.setFontSize(9);
@@ -113,7 +117,7 @@ export function exportButtonsHtml() {
 }
 
 /** Engancha los botones de exportación dentro de `container` a los datos actuales (rows puede ser una función). */
-export function bindExportButtons(container, { title, columns, getRows, filename }) {
+export function bindExportButtons(container, { title, columns, getRows, filename, apaisado = false }) {
   // Si algo falla, el usuario debe enterarse: un botón que no hace nada es peor que un error.
   const proteger = (traerLibreria, fn, que) => async (e) => {
     const boton = e.currentTarget;
@@ -136,7 +140,7 @@ export function bindExportButtons(container, { title, columns, getRows, filename
     }
   };
   container.querySelector('[data-export="pdf"]')?.addEventListener('click',
-    proteger(librosPdf, (rows) => exportPDF({ title, columns, rows, filename }), 'PDF'));
+    proteger(librosPdf, (rows) => exportPDF({ title, columns, rows, filename, apaisado }), 'PDF'));
   container.querySelector('[data-export="excel"]')?.addEventListener('click',
     proteger(librosExcel, (rows) => exportExcel({ sheetName: title, columns, rows, filename }), 'Excel'));
 }

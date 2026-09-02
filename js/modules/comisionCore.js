@@ -3,7 +3,7 @@
 // Vive aparte porque lo usan TRES reportes: Ventas, Comisiones y Detalle diario.
 // Si cada uno hiciera su propia cuenta, tarde o temprano dirían cifras distintas
 // para la misma venta y no habría forma de saber cuál creer.
-import { round2 } from '../utils.js';
+import { round2, detalleDe } from '../utils.js';
 
 /**
  * Parte `total` en `n` pedazos iguales, sin perder ni inventar centavos.
@@ -50,7 +50,11 @@ export function resumenPorEmpleado(ventas = [], ordenes = []) {
       const partes = repartirEntre(Number(r.total) || 0, emps.length);
       emps.forEach((e, i) => acumular(
         e.empleadoNombre || '(sin nombre)', tipo,
-        { numero: r.numero, fecha: r.fecha, total: Number(r.total) || 0, parte: partes[i], compartida: emps.length },
+        // `detalle` es QUÉ se vendió. Sin eso, el reporte de comisiones dice
+        // "V24 · Q365" y hay que abrir el sistema para saber de qué se trataba,
+        // que es justo lo que el dueño quiere evitar al revisar la planilla.
+        { numero: r.numero, fecha: r.fecha, detalle: detalleDe(r),
+          total: Number(r.total) || 0, parte: partes[i], compartida: emps.length },
         partes[i], Number(e.comisionPct) || 0,
       ));
     }
